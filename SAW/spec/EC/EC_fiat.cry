@@ -1,0 +1,140 @@
+/*
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0
+*/
+
+module EC where
+
+type limb = [64]
+type felem = [6][64]
+type point = {x : felem, y : felem, z : felem}
+
+primitive fiat_field_zero : felem
+
+primitive fiat_field_one : felem
+
+primitive fiat_field_square : felem -> felem
+
+primitive fiat_field_mul : felem -> felem -> felem
+
+primitive fiat_field_add : felem -> felem -> felem
+
+primitive fiat_field_sub : felem -> felem -> felem
+
+primitive fiat_field_opp : felem -> felem
+
+primitive constant_time_is_zero_w : limb -> limb
+primitive fiat_field_nz : felem -> limb
+primitive fiat_field_cmovznz : Bit -> felem -> felem -> felem
+
+is_nonzero : limb -> Bit
+is_nonzero x = x != zero
+
+fiat_point_double : point -> point
+fiat_point_double p = {x=x', y=y', z=z'}
+        where
+
+                delta = (fiat_field_square p.z)
+                gamma = (fiat_field_square p.y)
+                beta = (fiat_field_mul p.x gamma)
+
+                xminusdelta = (fiat_field_sub p.x delta)
+                xplusdelta = (fiat_field_add p.x delta)
+                twoxplusdelta = (fiat_field_add xplusdelta xplusdelta)
+                threexplusdelta = (fiat_field_add xplusdelta twoxplusdelta)
+                alpha = (fiat_field_mul xminusdelta threexplusdelta)
+
+                twobeta = (fiat_field_add beta beta)
+                fourbeta = (fiat_field_add twobeta twobeta)
+                eightbeta = (fiat_field_add fourbeta fourbeta)
+                x' = (fiat_field_sub (fiat_field_square alpha) eightbeta)
+
+                yplusz = (fiat_field_add p.y p.z)
+                ypluszsquared = (fiat_field_square yplusz)
+                z' = (fiat_field_sub (fiat_field_sub ypluszsquared gamma) delta)
+
+                fourgammasquared = (fiat_field_square (fiat_field_add gamma gamma))
+                eightgammasquared = (fiat_field_add fourgammasquared fourgammasquared)
+                y' = (fiat_field_sub (fiat_field_mul alpha (fiat_field_sub fourbeta x')) eightgammasquared)
+
+
+
+fiat_point_add : point -> point -> point
+fiat_point_add p1 p2 = p
+  where
+
+    z1nz = (fiat_field_nz p1.z)
+    z2nz = (fiat_field_nz p2.z)
+    z1z1 = (fiat_field_square p1.z)
+
+    z2z2 = (fiat_field_square p2.z)
+    u1 = (fiat_field_mul p1.x z2z2)
+    two_z1z2 = (fiat_field_sub (fiat_field_sub (fiat_field_square (fiat_field_add p1.z p2.z)) z1z1) z2z2)
+    s1 = (fiat_field_mul (fiat_field_mul p2.z z2z2) p1.y)
+
+    u2 = (fiat_field_mul p2.x z1z1)
+    h = (fiat_field_sub u2 u1)
+    xneq = (fiat_field_nz h)
+
+    z_out = (fiat_field_mul h two_z1z2)
+    z1z1z1 = (fiat_field_mul p1.z z1z1)
+    s2 = (fiat_field_mul p2.y z1z1z1)
+    r = (fiat_field_add (fiat_field_sub s2 s1) (fiat_field_sub s2 s1))
+    yneq = (fiat_field_nz r)
+
+    is_nontrivial_double = ((constant_time_is_zero_w (xneq || yneq)) &&
+                           (~(constant_time_is_zero_w z1nz)) &&
+                           (~(constant_time_is_zero_w z2nz)))
+
+    i = (fiat_field_square (fiat_field_add h h))
+    j = (fiat_field_mul h i)
+    v = (fiat_field_mul u1 i)
+
+    x_out = (fiat_field_sub (fiat_field_sub (fiat_field_sub (fiat_field_square r) j) v) v)
+    y_out = (fiat_field_sub (fiat_field_sub (fiat_field_mul (fiat_field_sub v x_out) r) (fiat_field_mul s1 j)) (fiat_field_mul s1 j))
+
+    x3 = (fiat_field_cmovznz (is_nonzero z2nz) p1.x (fiat_field_cmovznz (is_nonzero z1nz) p2.x x_out))
+    y3 = (fiat_field_cmovznz (is_nonzero z2nz) p1.y (fiat_field_cmovznz (is_nonzero z1nz) p2.y y_out))
+    z3 = (fiat_field_cmovznz (is_nonzero z2nz) p1.z (fiat_field_cmovznz (is_nonzero z1nz) p2.z z_out))
+
+    p = if (is_nonzero is_nontrivial_double) then (fiat_point_double p1) else {x=x3, y=y3, z=z3}
+
+/*
+type scalar = [384]
+type point_table = [64]point
+type point_id = [16]
+type wsize = 5
+
+fiat_subtract_if_even : point -> point -> scalar -> point
+fiat_subtract_if_even = undefined
+
+fiat_pre_comp_table : point -> point_table
+fiat_pre_comp_table = undefined
+
+fiat_mul_scalar_rwnaf : scalar -> [55]point_id
+fiat_mul_scalar_rwnaf = undefined
+
+fiat_select_point : point_table -> point_id -> point
+fiat_select_point = undefined
+
+conditional_subtract_if_even : point -> scalar -> point -> point
+conditional_subtract_if_even = undefined
+
+fiat_double_add_body : point_table -> point_id -> point  -> point
+fiat_double_add_body t d p = fiat_point_add (doubled!0) r
+  where
+    doubled = [p] # [fiat_point_double x | x <- doubled | y <- [1 .. wsize]]
+    idx = (abs d) >> 1
+    tmp = (fiat_select_point t idx)
+    ftmp = fiat_field_opp tmp.y
+    r = {x = tmp.x, y=(fiat_field_cmovznz_b ((d >> 7)!0) tmp.y ftmp), z=tmp.z}
+
+
+fiat_point_mul : point -> scalar -> point
+fiat_point_mul p s = conditional_subtract_if_even (res!0) s p
+  where
+    pre_comp = fiat_pre_comp_table p
+    rnaf = fiat_mul_scalar_rwnaf s
+    res = ([fiat_select_point pre_comp (rnaf@0 >> 1)] # [fiat_double_add_body pre_comp y x | x <- res | y <- rnaf @@ [1 .. 55]])
+
+*/

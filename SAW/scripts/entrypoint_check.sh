@@ -24,6 +24,8 @@ apply_patch "noinline-bn_reduce_once_in_place"
 apply_patch "noinline-bn_sub_words"
 apply_patch "noinline-ec_scalar_is_zero"
 apply_patch "noinline-value_barrier_w"
+apply_patch "noinline-value_barrier_u64"
+apply_patch "noinline-fiat_p384_sub"
 
 # ...next, check the proofs using CMake's Release settings...
 
