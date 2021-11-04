@@ -57,18 +57,28 @@ fiat_point_double p = {x=x', y=y', z=z'}
     y' = (fiat_field_sub (fiat_field_mul alpha (fiat_field_sub fourbeta x')) eightgammasquared)
 
 
-fiat_point_add : point -> point -> point
-fiat_point_add p1 p2 = p
+fiat_point_add : [32] -> point -> point -> point
+fiat_point_add mixed p1 p2 = p
   where
 
     z1nz = (fiat_field_nz p1.z)
     z2nz = (fiat_field_nz p2.z)
     z1z1 = (fiat_field_square p1.z)
 
+    // Jacobian arithmetic
     z2z2 = (fiat_field_square p2.z)
-    u1 = (fiat_field_mul p1.x z2z2)
-    two_z1z2 = (fiat_field_sub (fiat_field_sub (fiat_field_square (fiat_field_add p1.z p2.z)) z1z1) z2z2)
-    s1 = (fiat_field_mul (fiat_field_mul p2.z z2z2) p1.y)
+    u1_jac = (fiat_field_mul p1.x z2z2)
+    two_z1z2_jac = (fiat_field_sub (fiat_field_sub (fiat_field_square (fiat_field_add p1.z p2.z)) z1z1) z2z2)
+    s1_jac = (fiat_field_mul (fiat_field_mul p2.z z2z2) p1.y)
+
+    // mixed arithmetic
+    u1_mixed = p1.x
+    two_z1z2_mixed = (fiat_field_add p1.z p1.z)
+    s1_mixed = p1.y
+
+    u1 = if (mixed != zero) then u1_mixed else u1_jac
+    two_z1z2 = if (mixed != zero) then two_z1z2_mixed else two_z1z2_jac
+    s1 = if (mixed != zero) then s1_mixed else s1_jac
 
     u2 = (fiat_field_mul p2.x z1z1)
     h = (fiat_field_sub u2 u1)

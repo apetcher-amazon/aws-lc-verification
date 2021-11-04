@@ -242,7 +242,7 @@ let p384_point_double_spec = do {
   points_to_point x_out_ptr y_out_ptr z_out_ptr {{ fiat_point_double {x=x_in, y=y_in, z=z_in} }};
 };
 
-let p384_point_add_spec = do {
+let p384_point_add_spec mixed = do {
 
   x3_ptr <- crucible_alloc (llvm_array p384_felem_limbs (llvm_int limb_length));
   y3_ptr <- crucible_alloc (llvm_array p384_felem_limbs (llvm_int limb_length));
@@ -256,10 +256,9 @@ let p384_point_add_spec = do {
   (y2, y2_ptr) <- ptr_to_fresh_readonly "y2" (llvm_array p384_felem_limbs (llvm_int limb_length));
   (z2, z2_ptr) <- ptr_to_fresh_readonly "z2" (llvm_array p384_felem_limbs (llvm_int limb_length));
 
-  // 0 for not mixed
-  crucible_execute_func [x3_ptr, y3_ptr, z3_ptr, x1_ptr, y1_ptr, z1_ptr, (crucible_term {{ 0 : [32] }}), x2_ptr, y2_ptr, z2_ptr];
+  crucible_execute_func [x3_ptr, y3_ptr, z3_ptr, x1_ptr, y1_ptr, z1_ptr, (crucible_term {{`mixed:[32]}}), x2_ptr, y2_ptr, z2_ptr];
 
-  points_to_point x3_ptr y3_ptr z3_ptr {{ fiat_point_add {x=x1, y=y1, z=z1} {x=x2, y=y2, z=z2} }};
+  points_to_point x3_ptr y3_ptr z3_ptr {{ fiat_point_add (`mixed:[32]) {x=x1, y=y1, z=z1} {x=x2, y=y2, z=z2} }};
 };
 
 
@@ -281,7 +280,7 @@ fiat_p384_point_double_ov <- llvm_verify m "fiat_p384_point_double"
   (w4_unint_z3 ["fiat_field_square", "fiat_field_mul", "fiat_field_add", "fiat_field_sub"]);
 
 
-fiat_p384_point_add_ov <- llvm_verify m "fiat_p384_point_add"
+fiat_p384_point_add_jac_ov <- llvm_verify m "fiat_p384_point_add"
   [ value_barrier_u64_ov
   , fiat_p384_square_ov
   , fiat_p384_square_same_ov
@@ -301,5 +300,29 @@ fiat_p384_point_add_ov <- llvm_verify m "fiat_p384_point_add"
   , fiat_p384_point_double_ov
   ]
   true
-  p384_point_add_spec
+  (p384_point_add_spec 0)
   (w4_unint_z3 ["fiat_field_square", "fiat_field_mul", "fiat_field_add", "fiat_field_sub", "fiat_field_nz", "constant_time_is_zero_w", "fiat_field_cmovznz"]);
+
+fiat_p384_point_add_mixed_ov <- llvm_verify m "fiat_p384_point_add"
+  [ value_barrier_u64_ov
+  , fiat_p384_square_ov
+  , fiat_p384_square_same_ov
+  , fiat_p384_mul_ov
+  , fiat_p384_mul_same_r_ov
+  , fiat_p384_mul_same_l_ov
+  , fiat_p384_add_ov
+  , fiat_p384_add_same_l_ov
+  , fiat_p384_add_same_in_ov
+  , fiat_p384_add_same_all_ov
+  , fiat_p384_sub_ov
+  , fiat_p384_sub_same_l_ov
+  , fiat_p384_nz_ov
+  , fiat_p384_cmovznz_ov
+  , fiat_p384_cmovznz_same_r_ov
+  , constant_time_is_zero_w_ov
+  , fiat_p384_point_double_ov
+  ]
+  true
+  (p384_point_add_spec 1)
+  (w4_unint_z3 ["fiat_field_square", "fiat_field_mul", "fiat_field_add", "fiat_field_sub", "fiat_field_nz", "constant_time_is_zero_w", "fiat_field_cmovznz"]);
+  
