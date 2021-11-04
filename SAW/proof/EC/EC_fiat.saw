@@ -206,26 +206,22 @@ fiat_p384_sub_same_l_ov <- crucible_llvm_unsafe_assume_spec
   "fiat_p384_sub"
   p384_field_sub_same_l_spec;
 
-fiat_p384_nz_ov <- crucible_llvm_unsafe_assume_spec
-  m
-  "fiat_p384_nz"
-  p384_nz_spec;
 
-fiat_p384_cmovznz_ov <- crucible_llvm_unsafe_assume_spec
-  m
-  "fiat_p384_cmovznz"
-  p384_cmovznz_spec;
+fiat_p384_nz_ov <- llvm_verify m 
+  "fiat_p384_nz" [] true
+  p384_nz_spec (w4_unint_z3 []);
 
-fiat_p384_cmovznz_same_r_ov <- crucible_llvm_unsafe_assume_spec
-  m
-  "fiat_p384_cmovznz"
-  p384_cmovznz_same_r_spec;
+fiat_p384_cmovznz_ov <- llvm_verify m
+  "fiat_p384_cmovznz" [value_barrier_u64_ov] true
+  p384_cmovznz_spec (w4_unint_z3 []);
 
+fiat_p384_cmovznz_same_r_ov <- llvm_verify m
+  "fiat_p384_cmovznz" [value_barrier_u64_ov] true
+  p384_cmovznz_same_r_spec (w4_unint_z3 []);
 
-constant_time_is_zero_w_ov <- crucible_llvm_unsafe_assume_spec
-  m
-  "constant_time_is_zero_w"
-  constant_time_is_zero_w_spec;
+constant_time_is_zero_w_ov <- llvm_verify m
+  "constant_time_is_zero_w" [] true
+  constant_time_is_zero_w_spec (w4_unint_z3 []);
 
 let p384_point_double_spec = do {
 
@@ -258,7 +254,7 @@ let p384_point_add_spec mixed = do {
 
   crucible_execute_func [x3_ptr, y3_ptr, z3_ptr, x1_ptr, y1_ptr, z1_ptr, (crucible_term {{`mixed:[32]}}), x2_ptr, y2_ptr, z2_ptr];
 
-  points_to_point x3_ptr y3_ptr z3_ptr {{ fiat_point_add (`mixed:[32]) {x=x1, y=y1, z=z1} {x=x2, y=y2, z=z2} }};
+  points_to_point x3_ptr y3_ptr z3_ptr {{ fiat_point_add (`mixed != zero) {x=x1, y=y1, z=z1} {x=x2, y=y2, z=z2} }};
 };
 
 
@@ -325,4 +321,4 @@ fiat_p384_point_add_mixed_ov <- llvm_verify m "fiat_p384_point_add"
   true
   (p384_point_add_spec 1)
   (w4_unint_z3 ["fiat_field_square", "fiat_field_mul", "fiat_field_add", "fiat_field_sub", "fiat_field_nz", "constant_time_is_zero_w", "fiat_field_cmovznz"]);
-  
+

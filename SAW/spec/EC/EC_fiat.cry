@@ -23,12 +23,15 @@ primitive fiat_field_sub : felem -> felem -> felem
 
 primitive fiat_field_opp : felem -> felem
 
-primitive constant_time_is_zero_w : limb -> limb
-primitive fiat_field_nz : felem -> limb
-primitive fiat_field_cmovznz : limb -> felem -> felem -> felem
+constant_time_is_zero_w : limb -> limb
+constant_time_is_zero_w x = if (x == zero) then 0xFFFFFFFFFFFFFFFF else 0
 
-is_nonzero : limb -> Bit
-is_nonzero x = x != zero
+
+fiat_field_cmovznz : limb -> felem -> felem -> felem
+fiat_field_cmovznz t f1 f2 = if (t == zero) then f1 else f2
+
+fiat_field_nz : felem -> limb
+fiat_field_nz f = foldl (||) 0 f
 
 fiat_point_double : point -> point
 fiat_point_double p = {x=x', y=y', z=z'}
@@ -57,7 +60,7 @@ fiat_point_double p = {x=x', y=y', z=z'}
     y' = (fiat_field_sub (fiat_field_mul alpha (fiat_field_sub fourbeta x')) eightgammasquared)
 
 
-fiat_point_add : [32] -> point -> point -> point
+fiat_point_add : Bit -> point -> point -> point
 fiat_point_add mixed p1 p2 = p
   where
 
@@ -76,9 +79,9 @@ fiat_point_add mixed p1 p2 = p
     two_z1z2_mixed = (fiat_field_add p1.z p1.z)
     s1_mixed = p1.y
 
-    u1 = if (mixed != zero) then u1_mixed else u1_jac
-    two_z1z2 = if (mixed != zero) then two_z1z2_mixed else two_z1z2_jac
-    s1 = if (mixed != zero) then s1_mixed else s1_jac
+    u1 = if mixed then u1_mixed else u1_jac
+    two_z1z2 = if mixed then two_z1z2_mixed else two_z1z2_jac
+    s1 = if mixed then s1_mixed else s1_jac
 
     u2 = (fiat_field_mul p2.x z1z1)
     h = (fiat_field_sub u2 u1)
@@ -105,33 +108,30 @@ fiat_point_add mixed p1 p2 = p
     y3 = (fiat_field_cmovznz z2nz p1.y (fiat_field_cmovznz z1nz p2.y y_out))
     z3 = (fiat_field_cmovznz z2nz p1.z (fiat_field_cmovznz z1nz p2.z z_out))
 
-    p = if (is_nonzero is_nontrivial_double) then (fiat_point_double p1) else {x=x3, y=y3, z=z3}
+    p = if (is_nontrivial_double != zero) then (fiat_point_double p1) else {x=x3, y=y3, z=z3}
 
-/*
+
 type scalar = [384]
 type point_table = [64]point
 type point_id = [16]
 type wsize = 5
 
-fiat_subtract_if_even : point -> point -> scalar -> point
-fiat_subtract_if_even = undefined
+primitive fiat_subtract_if_even : point -> point -> scalar -> point
 
-fiat_pre_comp_table : point -> point_table
-fiat_pre_comp_table = undefined
+primitive fiat_pre_comp_table : point -> point_table
 
-fiat_mul_scalar_rwnaf : scalar -> [55]point_id
-fiat_mul_scalar_rwnaf = undefined
+primitive fiat_mul_scalar_rwnaf : scalar -> [55]point_id
 
-fiat_select_point : point_table -> point_id -> point
-fiat_select_point = undefined
+primitive fiat_select_point : point_table -> point_id -> point
 
-conditional_subtract_if_even : point -> scalar -> point -> point
-conditional_subtract_if_even = undefined
+primitive fiat_field_cmovznz_b : Bit -> felem -> felem -> felem
 
-fiat_double_add_body : point_table -> point_id -> point  -> point
-fiat_double_add_body t d p = fiat_point_add (doubled!0) r
+primitive conditional_subtract_if_even : point -> scalar -> point -> point
+
+fiat_double_add_body : point_table -> point -> point_id -> point
+fiat_double_add_body t p d = fiat_point_add 0 doubled r
   where
-    doubled = [p] # [fiat_point_double x | x <- doubled | y <- [1 .. wsize]]
+    doubled = foldl (\x -> \y -> fiat_point_double x) p [1 .. wsize]
     idx = (abs d) >> 1
     tmp = (fiat_select_point t idx)
     ftmp = fiat_field_opp tmp.y
@@ -139,10 +139,14 @@ fiat_double_add_body t d p = fiat_point_add (doubled!0) r
 
 
 fiat_point_mul : point -> scalar -> point
-fiat_point_mul p s = conditional_subtract_if_even (res!0) s p
+fiat_point_mul p s = conditional_subtract_if_even res s p
   where
     pre_comp = fiat_pre_comp_table p
     rnaf = fiat_mul_scalar_rwnaf s
-    res = ([fiat_select_point pre_comp (rnaf@0 >> 1)] # [fiat_double_add_body pre_comp y x | x <- res | y <- rnaf @@ [1 .. 55]])
+    res = foldl (fiat_double_add_body pre_comp) (fiat_select_point pre_comp (rnaf@0 >> 1)) (rnaf @@ [1 .. 54])
 
-*/
+
+
+
+
+    
