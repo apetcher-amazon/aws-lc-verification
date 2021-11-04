@@ -1,0 +1,12 @@
+diff --git a/crypto/fipsmodule/ec/p384.c b/crypto/fipsmodule/ec/p384.c
+index fbbf5d6ac..c0fd3f5e8 100644
+--- a/crypto/fipsmodule/ec/p384.c
++++ b/crypto/fipsmodule/ec/p384.c
+@@ -38,6 +38,7 @@ static const fiat_p384_felem fiat_p384_one = {
+     0x1, 0xffffffff, 0xffffffff, 0x0, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+ #endif  // 64BIT
+ 
++__attribute__((noinline))
+ static fiat_p384_limb_t fiat_p384_nz(
+     const fiat_p384_limb_t in1[FIAT_P384_NLIMBS]) {
+   fiat_p384_limb_t ret;

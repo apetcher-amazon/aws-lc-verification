@@ -25,38 +25,36 @@ primitive fiat_field_opp : felem -> felem
 
 primitive constant_time_is_zero_w : limb -> limb
 primitive fiat_field_nz : felem -> limb
-primitive fiat_field_cmovznz : Bit -> felem -> felem -> felem
+primitive fiat_field_cmovznz : limb -> felem -> felem -> felem
 
 is_nonzero : limb -> Bit
 is_nonzero x = x != zero
 
 fiat_point_double : point -> point
 fiat_point_double p = {x=x', y=y', z=z'}
-        where
+  where
+    delta = (fiat_field_square p.z)
+    gamma = (fiat_field_square p.y)
+    beta = (fiat_field_mul p.x gamma)
 
-                delta = (fiat_field_square p.z)
-                gamma = (fiat_field_square p.y)
-                beta = (fiat_field_mul p.x gamma)
+    xminusdelta = (fiat_field_sub p.x delta)
+    xplusdelta = (fiat_field_add p.x delta)
+    twoxplusdelta = (fiat_field_add xplusdelta xplusdelta)
+    threexplusdelta = (fiat_field_add xplusdelta twoxplusdelta)
+    alpha = (fiat_field_mul xminusdelta threexplusdelta)
 
-                xminusdelta = (fiat_field_sub p.x delta)
-                xplusdelta = (fiat_field_add p.x delta)
-                twoxplusdelta = (fiat_field_add xplusdelta xplusdelta)
-                threexplusdelta = (fiat_field_add xplusdelta twoxplusdelta)
-                alpha = (fiat_field_mul xminusdelta threexplusdelta)
+    twobeta = (fiat_field_add beta beta)
+    fourbeta = (fiat_field_add twobeta twobeta)
+    eightbeta = (fiat_field_add fourbeta fourbeta)
+    x' = (fiat_field_sub (fiat_field_square alpha) eightbeta)
 
-                twobeta = (fiat_field_add beta beta)
-                fourbeta = (fiat_field_add twobeta twobeta)
-                eightbeta = (fiat_field_add fourbeta fourbeta)
-                x' = (fiat_field_sub (fiat_field_square alpha) eightbeta)
+    yplusz = (fiat_field_add p.y p.z)
+    ypluszsquared = (fiat_field_square yplusz)
+    z' = (fiat_field_sub (fiat_field_sub ypluszsquared gamma) delta)
 
-                yplusz = (fiat_field_add p.y p.z)
-                ypluszsquared = (fiat_field_square yplusz)
-                z' = (fiat_field_sub (fiat_field_sub ypluszsquared gamma) delta)
-
-                fourgammasquared = (fiat_field_square (fiat_field_add gamma gamma))
-                eightgammasquared = (fiat_field_add fourgammasquared fourgammasquared)
-                y' = (fiat_field_sub (fiat_field_mul alpha (fiat_field_sub fourbeta x')) eightgammasquared)
-
+    fourgammasquared = (fiat_field_square (fiat_field_add gamma gamma))
+    eightgammasquared = (fiat_field_add fourgammasquared fourgammasquared)
+    y' = (fiat_field_sub (fiat_field_mul alpha (fiat_field_sub fourbeta x')) eightgammasquared)
 
 
 fiat_point_add : point -> point -> point
@@ -93,9 +91,9 @@ fiat_point_add p1 p2 = p
     x_out = (fiat_field_sub (fiat_field_sub (fiat_field_sub (fiat_field_square r) j) v) v)
     y_out = (fiat_field_sub (fiat_field_sub (fiat_field_mul (fiat_field_sub v x_out) r) (fiat_field_mul s1 j)) (fiat_field_mul s1 j))
 
-    x3 = (fiat_field_cmovznz (is_nonzero z2nz) p1.x (fiat_field_cmovznz (is_nonzero z1nz) p2.x x_out))
-    y3 = (fiat_field_cmovznz (is_nonzero z2nz) p1.y (fiat_field_cmovznz (is_nonzero z1nz) p2.y y_out))
-    z3 = (fiat_field_cmovznz (is_nonzero z2nz) p1.z (fiat_field_cmovznz (is_nonzero z1nz) p2.z z_out))
+    x3 = (fiat_field_cmovznz z2nz p1.x (fiat_field_cmovznz z1nz p2.x x_out))
+    y3 = (fiat_field_cmovznz z2nz p1.y (fiat_field_cmovznz z1nz p2.y y_out))
+    z3 = (fiat_field_cmovznz z2nz p1.z (fiat_field_cmovznz z1nz p2.z z_out))
 
     p = if (is_nonzero is_nontrivial_double) then (fiat_point_double p1) else {x=x3, y=y3, z=z3}
 
