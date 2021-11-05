@@ -26,7 +26,6 @@ primitive fiat_field_opp : felem -> felem
 constant_time_is_zero_w : limb -> limb
 constant_time_is_zero_w x = if (x == zero) then 0xFFFFFFFFFFFFFFFF else 0
 
-
 fiat_field_cmovznz : limb -> felem -> felem -> felem
 fiat_field_cmovznz t f1 f2 = if (t == zero) then f1 else f2
 
@@ -64,8 +63,6 @@ fiat_point_add : Bit -> point -> point -> point
 fiat_point_add mixed p1 p2 = p
   where
 
-    z1nz = (fiat_field_nz p1.z)
-    z2nz = (fiat_field_nz p2.z)
     z1z1 = (fiat_field_square p1.z)
 
     // Jacobian arithmetic
@@ -85,17 +82,22 @@ fiat_point_add mixed p1 p2 = p
 
     u2 = (fiat_field_mul p2.x z1z1)
     h = (fiat_field_sub u2 u1)
-    xneq = (fiat_field_nz h)
-
+    
     z_out = (fiat_field_mul h two_z1z2)
     z1z1z1 = (fiat_field_mul p1.z z1z1)
     s2 = (fiat_field_mul p2.y z1z1z1)
     r = (fiat_field_add (fiat_field_sub s2 s1) (fiat_field_sub s2 s1))
+
+    z1nz = (fiat_field_nz p1.z)
+    z2nz = (fiat_field_nz p2.z)
+    xneq = (fiat_field_nz h)
     yneq = (fiat_field_nz r)
 
-    is_nontrivial_double = ((constant_time_is_zero_w (xneq || yneq)) &&
-                           (~(constant_time_is_zero_w z1nz)) &&
-                           (~(constant_time_is_zero_w z2nz)))
+    is_nontrivial_double = (
+                          (constant_time_is_zero_w (xneq || yneq)) &&
+                          (~(constant_time_is_zero_w z1nz)) &&
+                          (~(constant_time_is_zero_w z2nz))
+                          ) != zero
 
     i = (fiat_field_square (fiat_field_add h h))
     j = (fiat_field_mul h i)
@@ -108,7 +110,7 @@ fiat_point_add mixed p1 p2 = p
     y3 = (fiat_field_cmovznz z2nz p1.y (fiat_field_cmovznz z1nz p2.y y_out))
     z3 = (fiat_field_cmovznz z2nz p1.z (fiat_field_cmovznz z1nz p2.z z_out))
 
-    p = if (is_nontrivial_double != zero) then (fiat_point_double p1) else {x=x3, y=y3, z=z3}
+    p = if is_nontrivial_double then (fiat_point_double p1) else {x=x3, y=y3, z=z3}
 
 
 type scalar = [384]
