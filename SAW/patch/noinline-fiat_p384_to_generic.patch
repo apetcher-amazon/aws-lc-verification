@@ -1,0 +1,12 @@
+diff --git a/crypto/fipsmodule/ec/p384.c b/crypto/fipsmodule/ec/p384.c
+index fbbf5d6ac..6f7354b21 100644
+--- a/crypto/fipsmodule/ec/p384.c
++++ b/crypto/fipsmodule/ec/p384.c
+@@ -63,6 +63,7 @@ static void fiat_p384_from_generic(fiat_p384_felem out, const EC_FELEM *in) {
+   fiat_p384_from_bytes(out, in->bytes);
+ }
+ 
++__attribute__((noinline))
+ static void fiat_p384_to_generic(EC_FELEM *out, const fiat_p384_felem in) {
+   // This works because 384 is a multiple of 64, so there are no excess bytes to
+   // zero when rounding up to |BN_ULONG|s.

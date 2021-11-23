@@ -7,7 +7,8 @@ module EC where
 
 type limb = [64]
 type felem = [6][64]
-type point = {x : felem, y : felem, z : felem}
+type point = [3]felem
+type JacobianBVPoint = { X : [384], Y : [384], Z : [384] }
 
 primitive fiat_field_zero : felem
 
@@ -33,14 +34,18 @@ fiat_field_nz : felem -> limb
 fiat_field_nz f = foldl (||) 0 f
 
 fiat_point_double : point -> point
-fiat_point_double p = {x=x', y=y', z=z'}
+fiat_point_double p = p'
   where
-    delta = (fiat_field_square p.z)
-    gamma = (fiat_field_square p.y)
-    beta = (fiat_field_mul p.x gamma)
+    x = p@0
+    y = p@1
+    z = p@2
 
-    xminusdelta = (fiat_field_sub p.x delta)
-    xplusdelta = (fiat_field_add p.x delta)
+    delta = (fiat_field_square z)
+    gamma = (fiat_field_square y)
+    beta = (fiat_field_mul x gamma)
+
+    xminusdelta = (fiat_field_sub x delta)
+    xplusdelta = (fiat_field_add x delta)
     twoxplusdelta = (fiat_field_add xplusdelta xplusdelta)
     threexplusdelta = (fiat_field_add xplusdelta twoxplusdelta)
     alpha = (fiat_field_mul xminusdelta threexplusdelta)
@@ -50,7 +55,7 @@ fiat_point_double p = {x=x', y=y', z=z'}
     eightbeta = (fiat_field_add fourbeta fourbeta)
     x' = (fiat_field_sub (fiat_field_square alpha) eightbeta)
 
-    yplusz = (fiat_field_add p.y p.z)
+    yplusz = (fiat_field_add y z)
     ypluszsquared = (fiat_field_square yplusz)
     z' = (fiat_field_sub (fiat_field_sub ypluszsquared gamma) delta)
 
@@ -58,46 +63,64 @@ fiat_point_double p = {x=x', y=y', z=z'}
     eightgammasquared = (fiat_field_add fourgammasquared fourgammasquared)
     y' = (fiat_field_sub (fiat_field_mul alpha (fiat_field_sub fourbeta x')) eightgammasquared)
 
+    p' = [x', y', z']
+
+testForDouble_ct : felem -> felem -> felem -> felem -> Bit
+testForDouble_ct p1z p2z h r = res
+  where
+    z1nz = (fiat_field_nz p1z)
+    z2nz = (fiat_field_nz p2z)
+    xneq = (fiat_field_nz h)
+    yneq = (fiat_field_nz r)
+
+    res = ((constant_time_is_zero_w (xneq || yneq)) &&
+            (~(constant_time_is_zero_w z1nz)) &&
+            (~(constant_time_is_zero_w z2nz))
+            ) != zero 
+
+testForDouble : felem -> felem -> felem -> felem -> Bit
+testForDouble p1z p2z h r = ((h==zero) && (r==zero) && (p1z != zero) && (p2z != zero))    
+
+property testForDoubleEquiv (f1, f2, f3, f4) = (testForDouble_ct f1 f2 f3 f4) == (testForDouble f1 f2 f3 f4)
 
 fiat_point_add : Bit -> point -> point -> point
 fiat_point_add mixed p1 p2 = p
   where
+    x1 = p1@0
+    y1 = p1@1
+    z1 = p1@2
 
-    z1z1 = (fiat_field_square p1.z)
+    x2 = p2@0
+    y2 = p2@1
+    z2 = p2@2
+
+    z1z1 = (fiat_field_square z1)
 
     // Jacobian arithmetic
-    z2z2 = (fiat_field_square p2.z)
-    u1_jac = (fiat_field_mul p1.x z2z2)
-    two_z1z2_jac = (fiat_field_sub (fiat_field_sub (fiat_field_square (fiat_field_add p1.z p2.z)) z1z1) z2z2)
-    s1_jac = (fiat_field_mul (fiat_field_mul p2.z z2z2) p1.y)
+    z2z2 = (fiat_field_square z2)
+    u1_jac = (fiat_field_mul x1 z2z2)
+    two_z1z2_jac = (fiat_field_sub (fiat_field_sub (fiat_field_square (fiat_field_add z1 z2)) z1z1) z2z2)
+    s1_jac = (fiat_field_mul (fiat_field_mul z2 z2z2) y1)
 
     // mixed arithmetic
-    u1_mixed = p1.x
-    two_z1z2_mixed = (fiat_field_add p1.z p1.z)
-    s1_mixed = p1.y
+    u1_mixed = x1
+    two_z1z2_mixed = (fiat_field_add z1 z1)
+    s1_mixed = y1
 
     u1 = if mixed then u1_mixed else u1_jac
     two_z1z2 = if mixed then two_z1z2_mixed else two_z1z2_jac
     s1 = if mixed then s1_mixed else s1_jac
 
-    u2 = (fiat_field_mul p2.x z1z1)
+    u2 = (fiat_field_mul x2 z1z1)
     h = (fiat_field_sub u2 u1)
     
     z_out = (fiat_field_mul h two_z1z2)
-    z1z1z1 = (fiat_field_mul p1.z z1z1)
-    s2 = (fiat_field_mul p2.y z1z1z1)
+    z1z1z1 = (fiat_field_mul z1 z1z1)
+    s2 = (fiat_field_mul y2 z1z1z1)
     r = (fiat_field_add (fiat_field_sub s2 s1) (fiat_field_sub s2 s1))
 
-    z1nz = (fiat_field_nz p1.z)
-    z2nz = (fiat_field_nz p2.z)
-    xneq = (fiat_field_nz h)
-    yneq = (fiat_field_nz r)
-
-    is_nontrivial_double = (
-                          (constant_time_is_zero_w (xneq || yneq)) &&
-                          (~(constant_time_is_zero_w z1nz)) &&
-                          (~(constant_time_is_zero_w z2nz))
-                          ) != zero
+    
+    is_nontrivial_double = (testForDouble z1 z2 h r)                                  
 
     i = (fiat_field_square (fiat_field_add h h))
     j = (fiat_field_mul h i)
@@ -106,46 +129,105 @@ fiat_point_add mixed p1 p2 = p
     x_out = (fiat_field_sub (fiat_field_sub (fiat_field_sub (fiat_field_square r) j) v) v)
     y_out = (fiat_field_sub (fiat_field_sub (fiat_field_mul (fiat_field_sub v x_out) r) (fiat_field_mul s1 j)) (fiat_field_mul s1 j))
 
-    x3 = (fiat_field_cmovznz z2nz p1.x (fiat_field_cmovznz z1nz p2.x x_out))
-    y3 = (fiat_field_cmovznz z2nz p1.y (fiat_field_cmovznz z1nz p2.y y_out))
-    z3 = (fiat_field_cmovznz z2nz p1.z (fiat_field_cmovznz z1nz p2.z z_out))
+    z1nz = (fiat_field_nz z1)
+    z2nz = (fiat_field_nz z2)
+    x3 = (fiat_field_cmovznz z2nz x1 (fiat_field_cmovznz z1nz x2 x_out))
+    y3 = (fiat_field_cmovznz z2nz y1 (fiat_field_cmovznz z1nz y2 y_out))
+    z3 = (fiat_field_cmovznz z2nz z1 (fiat_field_cmovznz z1nz z2 z_out))
 
-    p = if is_nontrivial_double then (fiat_point_double p1) else {x=x3, y=y3, z=z3}
+    p = if is_nontrivial_double then (fiat_point_double p1) else [x3, y3, z3]
 
 
 type scalar = [384]
 type point_table = [64]point
 type point_id = [16]
-type wsize = 5
+type wsize = 7
 
-primitive fiat_subtract_if_even : point -> point -> scalar -> point
+fiat_pre_comp_table : point -> point_table
+fiat_pre_comp_table p = foldl f (repeat p) [1..2]
+  where
+    twoP = (fiat_point_double p)
+    f z i  = update z i (z@(i-1) + twoP)
 
-primitive fiat_pre_comp_table : point -> point_table
 
 primitive fiat_mul_scalar_rwnaf : scalar -> [55]point_id
 
-primitive fiat_select_point : point_table -> point_id -> point
+fiat_select_point : {n} (fin n) => [n] -> point_table -> point
+fiat_select_point i t = t@i
 
-primitive fiat_field_cmovznz_b : Bit -> felem -> felem -> felem
+conditional_subtract_if_even_ct : point -> scalar -> point -> point
+conditional_subtract_if_even_ct p1 t p2 = r where
+  t_limb = (byte_to_limb ((take`{8} t) && 1))
+  tmp1 = [p2@0, (fiat_field_opp (p2@1)), p2@2]
+  tmp2 = fiat_point_add 0 p1 tmp1
+  r = [(fiat_field_cmovznz t_limb (tmp2@0) (p1@0)), 
+      (fiat_field_cmovznz t_limb (tmp2@1) (p1@1)), 
+      (fiat_field_cmovznz t_limb (tmp2@2) (p1@2))]
 
-primitive conditional_subtract_if_even : point -> scalar -> point -> point
+primitive fiat_from_generic : [384] -> felem
+primitive fiat_to_generic : felem -> [384]
+
+point_id_to_limb : point_id -> limb 
+point_id_to_limb x = (0:[48]) # (x)
+
+byte_to_limb : [8] -> limb 
+byte_to_limb x = (0:[56]) # (x)
 
 fiat_double_add_body : point_table -> point -> point_id -> point
-fiat_double_add_body t p d = fiat_point_add 0 doubled r
+/*
+fiat_double_add_body t p d = res
   where
-    doubled = foldl (\x -> \y -> fiat_point_double x) p [1 .. wsize]
-    idx = (abs d) >> 1
-    tmp = (fiat_select_point t idx)
-    ftmp = fiat_field_opp tmp.y
-    r = {x = tmp.x, y=(fiat_field_cmovznz_b ((d >> 7)!0) tmp.y ftmp), z=tmp.z}
+    doubled = foldl (\x -> \y -> fiat_point_double x) p [0 .. (wsize - 1)]
+    is_neg = (d >> 7) && 1
+    abs_d = (d ^ (-is_neg)) + is_neg
+    idx = abs_d >> 1
+    tmp = (fiat_select_point idx t)
+    tmp_y = (tmp@1)
+    ftmp = fiat_field_opp tmp_y
+    tmp_y' = (fiat_field_cmovznz (point_id_to_limb is_neg) tmp_y ftmp)
+    r = [tmp@0, tmp_y', (tmp@2)]
+    res = fiat_point_add 0 doubled r
+*/
 
+fiat_double_add_body t p d = res
+  where
+    doubled = foldl (\x -> \y -> fiat_point_double x) p [0 .. (wsize - 1)]
+    is_neg = (d >> 7) && 1
+    abs_d = (d ^ (-is_neg)) + is_neg
+    idx = abs_d >> 1
+    tmp = (fiat_select_point idx t)
+    ftmp = fiat_field_opp (tmp@1)
+    r = [tmp@0, (fiat_field_cmovznz (point_id_to_limb is_neg) (tmp@1) ftmp), (tmp@2)]
+    res = fiat_point_add 0 doubled r
 
 fiat_point_mul : point -> scalar -> point
-fiat_point_mul p s = conditional_subtract_if_even res s p
+fiat_point_mul p s = r
   where
     pre_comp = fiat_pre_comp_table p
     rnaf = fiat_mul_scalar_rwnaf s
-    res = foldl (fiat_double_add_body pre_comp) (fiat_select_point pre_comp (rnaf@0 >> 1)) (rnaf @@ [1 .. 54])
+    idx = ((rnaf@54) >> 1)
+    acc = (fiat_select_point idx pre_comp )
+    res = foldl (fiat_double_add_body pre_comp) acc (rnaf @@ [1, 0])
+    r = conditional_subtract_if_even_ct res s p
+
+/*
+fiat_point_mul p s = r
+  where
+    pre_comp = fiat_pre_comp_table p
+    rnaf = fiat_mul_scalar_rwnaf s
+    acc = (fiat_select_point ((rnaf@54) >> 1) pre_comp )
+    res = foldl (fiat_double_add_body pre_comp) acc (rnaf @@ [1, 0])
+    r = conditional_subtract_if_even_ct res s p
+*/
+
+fiat_point_mul_generic : JacobianBVPoint -> scalar -> JacobianBVPoint
+fiat_point_mul_generic p s = r
+  where
+    px = fiat_from_generic p.X
+    py = fiat_from_generic p.Y
+    pz = fiat_from_generic p.Z
+    r_fiat = (fiat_point_mul [px, py, pz] s)
+    r = {X = fiat_to_generic (r_fiat@0), Y = fiat_to_generic (r_fiat@1), Z = fiat_to_generic (r_fiat@2)}
 
 
 

@@ -1,6 +1,9 @@
 
 enable_experimental;
 
+
+write_coq_cryptol_module "../../spec/EC/EC_fiat.cry" "EC.v" [] [];
+
 // Disable debug intrinsics to avoid https://github.com/GaloisInc/crucible/issues/778
 disable_debug_intrinsics;
 

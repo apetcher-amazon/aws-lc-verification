@@ -27,8 +27,13 @@ apply_patch "noinline-value_barrier_w"
 apply_patch "noinline-value_barrier_u64"
 apply_patch "noinline-constant_time_is_zero_w"
 apply_patch "noinline-fiat_p384_sub"
+apply_patch "noinline-fiat_p384_opp"
+apply_patch "noinline-fiat_p384_copy"
 apply_patch "noinline-fiat_p384_nz"
 apply_patch "noinline-fiat_p384_cmovznz"
+apply_patch "noinline-fiat_p384_from_generic"
+apply_patch "noinline-fiat_p384_to_generic"
+apply_patch "noinline-fiat_p384_select_point"
 
 # ...next, check the proofs using CMake's Release settings...
 

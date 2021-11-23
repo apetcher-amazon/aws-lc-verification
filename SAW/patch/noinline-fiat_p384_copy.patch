@@ -1,0 +1,12 @@
+diff --git a/crypto/fipsmodule/ec/p384.c b/crypto/fipsmodule/ec/p384.c
+index fbbf5d6ac..12d76903c 100644
+--- a/crypto/fipsmodule/ec/p384.c
++++ b/crypto/fipsmodule/ec/p384.c
+@@ -45,6 +45,7 @@ static fiat_p384_limb_t fiat_p384_nz(
+   return ret;
+ }
+ 
++__attribute__((noinline))
+ static void fiat_p384_copy(fiat_p384_limb_t out[FIAT_P384_NLIMBS],
+                            const fiat_p384_limb_t in1[FIAT_P384_NLIMBS]) {
+   for (size_t i = 0; i < FIAT_P384_NLIMBS; i++) {
