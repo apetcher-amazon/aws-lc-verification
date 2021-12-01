@@ -675,6 +675,7 @@ fiat_p384_pre_comp_table_ov <- crucible_llvm_unsafe_assume_spec m
   "fiat_p384_pre_comp_table" 
   p384_pre_comp_table_spec;
 
+
 fiat_p384_mul_loop_body_ov <- llvm_verify m "fiat_p384_mul_loop_body"
   [ value_barrier_u64_ov
   , fiat_p384_point_add_jac_ov
@@ -695,17 +696,24 @@ fiat_p384_mul_loop_body_ov <- llvm_verify m "fiat_p384_mul_loop_body"
   ]
   true
   fiat_p384_mul_loop_body_spec
-  (w4_unint_z3 ["fiat_field_square", "fiat_field_mul", "fiat_field_add", "fiat_field_sub", "fiat_mul_scalar_rwnaf", "fiat_from_generic", "fiat_to_generic", "fiat_field_opp"]);
+  (do {
+  goal_eval_unint 
+      ["fiat_field_square", "fiat_field_mul", "fiat_field_add", "fiat_field_sub", "fiat_mul_scalar_rwnaf", "fiat_from_generic", "fiat_to_generic", "fiat_field_opp", "fiat_point_add", "fiat_point_double", "fiat_select_point",
+      "fiat_field_cmovznz"];
 
-/*
-fiat_p384_mul_loop_body_ov <- crucible_llvm_unsafe_assume_spec m
-  "fiat_p384_mul_loop_body" 
-  fiat_p384_mul_loop_body_spec;
-*/
+  //print_goal; 
+  w4_unint_z3 ["fiat_field_square", "fiat_field_mul", "fiat_field_add", "fiat_field_sub", "fiat_mul_scalar_rwnaf", "fiat_from_generic", "fiat_to_generic", "fiat_field_opp", "fiat_point_add", "fiat_point_double", "fiat_select_point", 
+  "fiat_field_cmovznz"];
+  });
 
 conditional_subtract_if_even_ct_same_l_ov <- crucible_llvm_unsafe_assume_spec m
   "conditional_subtract_if_even_ct" 
   conditional_subtract_if_even_ct_same_l_spec;
+
+/*
+fiat_double_add_body_equiv_thm <- prove_folding_theorem 
+  {{\ t p d -> (fiat_double_add_body t p d) == fiat_double_add_body t p d}};
+*/
 
 p384_fiat_point_mul_ov <- llvm_verify m "fiat_p384_point_mul"
   [ value_barrier_u64_ov
@@ -724,12 +732,30 @@ p384_fiat_point_mul_ov <- llvm_verify m "fiat_p384_point_mul"
   , fiat_p384_opp_ov
   , fiat_p384_copy_ov
   , fiat_p384_pre_comp_table_ov
-  , fiat_p384_mul_loop_body_ov
+  //, fiat_p384_mul_loop_body_ov
   , conditional_subtract_if_even_ct_same_l_ov
   ]
   true
   p384_fiat_point_mul_spec
-  (w4_unint_z3 ["fiat_field_square", "fiat_field_mul", "fiat_field_add", "fiat_field_sub", "fiat_mul_scalar_rwnaf", "fiat_from_generic", "fiat_to_generic", "fiat_field_opp", "fiat_double_add_body", "conditional_subtract_if_even_ct"]);
+  (do {
+    goal_eval_unint 
+      ["fiat_field_square", "fiat_field_add", "fiat_field_sub", "fiat_field_mul", "fiat_mul_scalar_rwnaf", "fiat_field_opp",
+   "fiat_select_point",
+  "conditional_subtract_if_even_ct", "fiat_pre_comp_table"
+  //, "fiat_double_add_body"
+  ];
+  
+
+  (w4_unint_z3 ["fiat_field_square", "fiat_field_add", "fiat_field_sub", 
+  "fiat_field_mul",
+  "fiat_mul_scalar_rwnaf", "fiat_field_opp",
+   "fiat_select_point",
+  "conditional_subtract_if_even_ct", "fiat_pre_comp_table"
+  //, "fiat_double_add_body"
+  ]);
+  }
+
+  );
 
 fiat_p384_point_mul_ov <- llvm_verify m "ec_GFp_nistp384_point_mul"
   [ value_barrier_u64_ov

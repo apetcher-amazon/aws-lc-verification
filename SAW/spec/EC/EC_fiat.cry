@@ -152,7 +152,7 @@ fiat_pre_comp_table p = foldl f (repeat p) [1..2]
 
 primitive fiat_mul_scalar_rwnaf : scalar -> [55]point_id
 
-fiat_select_point : {n} (fin n) => [n] -> point_table -> point
+fiat_select_point : [64] -> point_table -> point
 fiat_select_point i t = t@i
 
 conditional_subtract_if_even_ct : point -> scalar -> point -> point
@@ -174,41 +174,29 @@ byte_to_limb : [8] -> limb
 byte_to_limb x = (0:[56]) # (x)
 
 fiat_double_add_body : point_table -> point -> point_id -> point
-/*
 fiat_double_add_body t p d = res
   where
     doubled = foldl (\x -> \y -> fiat_point_double x) p [0 .. (wsize - 1)]
     is_neg = (d >> 7) && 1
     abs_d = (d ^ (-is_neg)) + is_neg
-    idx = abs_d >> 1
-    tmp = (fiat_select_point idx t)
-    tmp_y = (tmp@1)
-    ftmp = fiat_field_opp tmp_y
-    tmp_y' = (fiat_field_cmovznz (point_id_to_limb is_neg) tmp_y ftmp)
-    r = [tmp@0, tmp_y', (tmp@2)]
-    res = fiat_point_add 0 doubled r
-*/
-
-fiat_double_add_body t p d = res
-  where
-    doubled = foldl (\x -> \y -> fiat_point_double x) p [0 .. (wsize - 1)]
-    is_neg = (d >> 7) && 1
-    abs_d = (d ^ (-is_neg)) + is_neg
-    idx = abs_d >> 1
-    tmp = (fiat_select_point idx t)
+    idx = abs_d >>$ 1
+    tmp = (fiat_select_point (sign_extend_16_64 idx) t)
     ftmp = fiat_field_opp (tmp@1)
     r = [tmp@0, (fiat_field_cmovznz (point_id_to_limb is_neg) (tmp@1) ftmp), (tmp@2)]
     res = fiat_point_add 0 doubled r
+
+sign_extend_16_64 : [16] -> [64]
+sign_extend_16_64 x = (if (x@0) then (~zero:[48]) else (zero:[48])) # x
 
 fiat_point_mul : point -> scalar -> point
 fiat_point_mul p s = r
   where
     pre_comp = fiat_pre_comp_table p
     rnaf = fiat_mul_scalar_rwnaf s
-    idx = ((rnaf@54) >> 1)
-    acc = (fiat_select_point idx pre_comp )
-    res = foldl (fiat_double_add_body pre_comp) acc (rnaf @@ [1, 0])
-    r = conditional_subtract_if_even_ct res s p
+    idx = ((rnaf@54) >>$ 1)
+    acc = (fiat_select_point (sign_extend_16_64 idx) pre_comp)
+    res = foldl (fiat_double_add_body pre_comp) acc (rnaf @@ [53, 52 .. 0])
+    r = conditional_subtract_if_even_ct res s (pre_comp@0)
 
 /*
 fiat_point_mul p s = r
