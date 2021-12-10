@@ -34,6 +34,7 @@ apply_patch "noinline-fiat_p384_cmovznz"
 apply_patch "noinline-fiat_p384_from_generic"
 apply_patch "noinline-fiat_p384_to_generic"
 apply_patch "noinline-fiat_p384_select_point"
+apply_patch "noinline-fiat_p384_get_bit"
 
 # ...next, check the proofs using CMake's Release settings...
 

@@ -1,0 +1,12 @@
+diff --git a/crypto/fipsmodule/ec/p384.c b/crypto/fipsmodule/ec/p384.c
+index fbbf5d6ac..469923886 100644
+--- a/crypto/fipsmodule/ec/p384.c
++++ b/crypto/fipsmodule/ec/p384.c
+@@ -535,6 +535,7 @@ static int ec_GFp_nistp384_cmp_x_coordinate(const EC_GROUP *group,
+ // |make_tables.go| script.
+ 
+ // fiat_p384_get_bit returns the |i|-th bit in |in|
++__attribute__((noinline))
+ static crypto_word_t fiat_p384_get_bit(const uint8_t *in, int i) {
+   if (i < 0 || i >= 384) {
+     return 0;

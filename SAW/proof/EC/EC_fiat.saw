@@ -161,6 +161,15 @@ let p384_cmovznz_same_r_spec = do {
   crucible_points_to outarg_ptr (crucible_term {{ fiat_field_cmovznz test inarg1 outarg}});
 };
 
+let p384_get_bit_spec = do {
+
+  (scalar, scalar_ptr) <- ptr_to_fresh_readonly "scalar" (llvm_int 384);
+  i <- crucible_fresh_var "i" (llvm_int 32);
+
+  crucible_execute_func [scalar_ptr, (crucible_term i)];
+
+  crucible_return (crucible_term {{ fiat_get_bit scalar i}});
+};
 
 let constant_time_is_zero_w_spec = do {
   inarg <- crucible_fresh_var "inarg" (llvm_int limb_length);
@@ -195,16 +204,18 @@ let p384_select_point_spec = do {
  
   crucible_execute_func [outarg_ptr, (crucible_term id), points_ptr, (crucible_term {{ 64 }})];
 
-  crucible_points_to outarg_ptr (crucible_term {{ fiat_select_point id points }});
+  crucible_points_to outarg_ptr (crucible_term {{ fiat_select_point_ct id points }});
 };
 
+import "../../../cryptol-specs/Common/utils.cry";
+
 let p384_mul_scalar_rwnaf_spec = do {
-  rnaf_ptr <- crucible_alloc (llvm_array 55 (llvm_int 16));
+  (rnaf, rnaf_ptr) <- ptr_to_fresh "rnaf" (llvm_array 55 (llvm_int 16));
   (scalar, scalar_ptr) <- ptr_to_fresh_readonly "scalar" i384;
  
   crucible_execute_func [rnaf_ptr, scalar_ptr];
 
-  crucible_points_to rnaf_ptr (crucible_term {{ fiat_mul_scalar_rwnaf scalar }});
+  crucible_points_to rnaf_ptr (crucible_term {{ fiat_mul_scalar_rwnaf scalar rnaf}});
 };
 
 let p384_opp_spec = do {
@@ -280,6 +291,11 @@ fiat_p384_sub_same_l_ov <- crucible_llvm_unsafe_assume_spec
   m
   "fiat_p384_sub"
   p384_field_sub_same_l_spec;
+
+fiat_p384_get_bit_ov <- crucible_llvm_unsafe_assume_spec
+  m
+  "fiat_p384_get_bit"
+  p384_get_bit_spec;
 
 let p384_point_double_spec = do {
 
@@ -626,16 +642,16 @@ let fiat_p384_mul_loop_body_spec = do {
   crucible_points_to p_ptr (crucible_term {{fiat_double_add_body table p d}});
 };
 
-let conditional_subtract_if_even_ct_same_l_spec = do {
+let conditional_subtract_if_even_ct_spec = do {
   
-  (p1, p1_ptr) <- ptr_to_fresh "p1" (llvm_array 3 (llvm_array p384_felem_limbs (llvm_int limb_length)));
-  (p2, p2_ptr) <- ptr_to_fresh_readonly "p2" (llvm_array 3 (llvm_array p384_felem_limbs (llvm_int limb_length)));
+  (res, res_ptr) <- ptr_to_fresh "res" (llvm_array 3 (llvm_array p384_felem_limbs (llvm_int limb_length)));
+  (p, p_ptr) <- ptr_to_fresh_readonly "p" (llvm_array 3 (llvm_array p384_felem_limbs (llvm_int limb_length)));
   tmp_ptr <- crucible_alloc (llvm_array 3 (llvm_array p384_felem_limbs (llvm_int limb_length)));
   (scalar, scalar_ptr) <- ptr_to_fresh_readonly "p_scalar" i384;
 
-  crucible_execute_func [p1_ptr, p1_ptr, p2_ptr, scalar_ptr, tmp_ptr];
+  crucible_execute_func [res_ptr, p_ptr, scalar_ptr, tmp_ptr];
 
-  crucible_points_to p1_ptr (crucible_term {{conditional_subtract_if_even_ct p1 scalar p2}});
+  crucible_points_to res_ptr (crucible_term {{conditional_subtract_if_even_ct res scalar p}});
 };
 
 fiat_p384_from_generic_ov <- crucible_llvm_unsafe_assume_spec
@@ -648,20 +664,19 @@ fiat_p384_to_generic_ov <- crucible_llvm_unsafe_assume_spec
   "fiat_p384_to_generic"
   p384_to_generic_spec;
 
-/*
-Need to verify against a constant-time spec, and then prove equivalence in Cryptol
 fiat_p384_select_point_ov <- llvm_verify m
   "fiat_p384_select_point" [fiat_p384_cmovznz_same_r_ov] true
   p384_select_point_spec (w4_unint_z3 []);
-  */
 
-fiat_p384_select_point_ov <- crucible_llvm_unsafe_assume_spec m
-  "fiat_p384_select_point" 
-  p384_select_point_spec;
-
-fiat_p384_mul_scalar_rwnaf_ov <- crucible_llvm_unsafe_assume_spec m
+fiat_p384_mul_scalar_rwnaf_ov <- llvm_verify m
   "fiat_p384_mul_scalar_rwnaf" 
-  p384_mul_scalar_rwnaf_spec;
+  [fiat_p384_get_bit_ov] 
+  true
+  p384_mul_scalar_rwnaf_spec
+  (do{
+  goal_eval_unint["fiat_get_bit"];
+  w4_unint_z3 ["fiat_get_bit"];
+  });
 
 fiat_p384_opp_ov <- crucible_llvm_unsafe_assume_spec m
   "fiat_p384_opp" 
@@ -670,92 +685,6 @@ fiat_p384_opp_ov <- crucible_llvm_unsafe_assume_spec m
 fiat_p384_copy_ov <- crucible_llvm_unsafe_assume_spec m
   "fiat_p384_copy" 
   p384_copy_spec;
-
-fiat_p384_pre_comp_table_ov <- crucible_llvm_unsafe_assume_spec m
-  "fiat_p384_pre_comp_table" 
-  p384_pre_comp_table_spec;
-
-
-fiat_p384_mul_loop_body_ov <- llvm_verify m "fiat_p384_mul_loop_body"
-  [ value_barrier_u64_ov
-  , fiat_p384_point_add_jac_ov
-  , fiat_p384_point_add_same_r_jac_ov
-  , fiat_p384_point_add_same_l_jac_ov
-  , fiat_p384_point_double_ov
-  , fiat_p384_point_double_same_ov
-  , fiat_p384_from_generic_ov
-  , fiat_p384_to_generic_ov
-  , fiat_p384_cmovznz_ov
-  , fiat_p384_cmovznz_same_l_ov
-  , fiat_p384_cmovznz_same_r_ov
-  , fiat_p384_select_point_ov
-  , fiat_p384_mul_scalar_rwnaf_ov
-  , fiat_p384_opp_ov
-  , fiat_p384_copy_ov
-  , fiat_p384_pre_comp_table_ov
-  ]
-  true
-  fiat_p384_mul_loop_body_spec
-  (do {
-  goal_eval_unint 
-      ["fiat_field_square", "fiat_field_mul", "fiat_field_add", "fiat_field_sub", "fiat_mul_scalar_rwnaf", "fiat_from_generic", "fiat_to_generic", "fiat_field_opp", "fiat_point_add", "fiat_point_double", "fiat_select_point",
-      "fiat_field_cmovznz"];
-
-  //print_goal; 
-  w4_unint_z3 ["fiat_field_square", "fiat_field_mul", "fiat_field_add", "fiat_field_sub", "fiat_mul_scalar_rwnaf", "fiat_from_generic", "fiat_to_generic", "fiat_field_opp", "fiat_point_add", "fiat_point_double", "fiat_select_point", 
-  "fiat_field_cmovznz"];
-  });
-
-conditional_subtract_if_even_ct_same_l_ov <- crucible_llvm_unsafe_assume_spec m
-  "conditional_subtract_if_even_ct" 
-  conditional_subtract_if_even_ct_same_l_spec;
-
-/*
-fiat_double_add_body_equiv_thm <- prove_folding_theorem 
-  {{\ t p d -> (fiat_double_add_body t p d) == fiat_double_add_body t p d}};
-*/
-
-p384_fiat_point_mul_ov <- llvm_verify m "fiat_p384_point_mul"
-  [ value_barrier_u64_ov
-  , fiat_p384_point_add_jac_ov
-  , fiat_p384_point_add_same_r_jac_ov
-  , fiat_p384_point_add_same_l_jac_ov
-  , fiat_p384_point_double_ov
-  , fiat_p384_point_double_same_ov
-  , fiat_p384_from_generic_ov
-  , fiat_p384_to_generic_ov
-  , fiat_p384_cmovznz_ov
-  , fiat_p384_cmovznz_same_l_ov
-  , fiat_p384_cmovznz_same_r_ov
-  , fiat_p384_select_point_ov
-  , fiat_p384_mul_scalar_rwnaf_ov
-  , fiat_p384_opp_ov
-  , fiat_p384_copy_ov
-  , fiat_p384_pre_comp_table_ov
-  //, fiat_p384_mul_loop_body_ov
-  , conditional_subtract_if_even_ct_same_l_ov
-  ]
-  true
-  p384_fiat_point_mul_spec
-  (do {
-    goal_eval_unint 
-      ["fiat_field_square", "fiat_field_add", "fiat_field_sub", "fiat_field_mul", "fiat_mul_scalar_rwnaf", "fiat_field_opp",
-   "fiat_select_point",
-  "conditional_subtract_if_even_ct", "fiat_pre_comp_table"
-  //, "fiat_double_add_body"
-  ];
-  
-
-  (w4_unint_z3 ["fiat_field_square", "fiat_field_add", "fiat_field_sub", 
-  "fiat_field_mul",
-  "fiat_mul_scalar_rwnaf", "fiat_field_opp",
-   "fiat_select_point",
-  "conditional_subtract_if_even_ct", "fiat_pre_comp_table"
-  //, "fiat_double_add_body"
-  ]);
-  }
-
-  );
 
 fiat_p384_point_mul_ov <- llvm_verify m "ec_GFp_nistp384_point_mul"
   [ value_barrier_u64_ov
@@ -773,10 +702,16 @@ fiat_p384_point_mul_ov <- llvm_verify m "ec_GFp_nistp384_point_mul"
   , fiat_p384_mul_scalar_rwnaf_ov
   , fiat_p384_opp_ov
   , fiat_p384_copy_ov
-  , fiat_p384_pre_comp_table_ov
-  , p384_fiat_point_mul_ov
   ]
   true
   p384_point_mul_spec
-  (w4_unint_z3 ["fiat_field_square", "fiat_field_mul", "fiat_field_add", "fiat_field_sub", "fiat_mul_scalar_rwnaf", "fiat_from_generic", "fiat_to_generic", "fiat_field_opp"]);
+  (w4_unint_z3 ["fiat_field_square", "fiat_field_add", "fiat_field_sub", 
+  "fiat_field_mul",
+  "fiat_mul_scalar_rwnaf", "fiat_field_opp",
+   "fiat_select_point_ct", 
+  "fiat_field_cmovznz",
+  "fiat_to_generic", "fiat_from_generic"
+  ]);
+
+
 

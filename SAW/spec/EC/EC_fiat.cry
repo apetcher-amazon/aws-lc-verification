@@ -7,10 +7,24 @@ module EC where
 
 type limb = [64]
 type felem = [6][64]
+
 type point = [3]felem
 type JacobianBVPoint = { X : [384], Y : [384], Z : [384] }
 
 primitive fiat_field_zero : felem
+
+zero_felem: felem
+zero_felem = [0, 0, 0, 0, 0, 0]
+
+
+P384_MUL_WSIZE : [32]
+P384_MUL_WSIZE = 7
+
+P384_MUL_WSIZE_MASK : [16]
+P384_MUL_WSIZE_MASK = (1 << 8) - 1
+
+P384_MUL_TWO_TO_WSIZE : [16]
+P384_MUL_TWO_TO_WSIZE = (1 << 7)
 
 primitive fiat_field_one : felem
 
@@ -144,20 +158,75 @@ type point_id = [16]
 type wsize = 7
 
 fiat_pre_comp_table : point -> point_table
-fiat_pre_comp_table p = foldl f (repeat p) [1..2]
+fiat_pre_comp_table p = foldl f (repeat p) [1..63]
   where
     twoP = (fiat_point_double p)
-    f z i  = update z i (z@(i-1) + twoP)
+    f z i  = update z i (fiat_point_add 0 twoP (z@(i-1)))
+
+primitive fiat_get_bit : scalar -> [32] -> [64]
+
+sign_extend_16_64 : [16] -> [64]
+sign_extend_16_64 x = (if (x@0) then (~zero:[48]) else (zero:[48])) # x
+
+sign_extend_16_32 : [16] -> [32]
+sign_extend_16_32 x = (if (x@0) then (~zero:[16]) else (zero:[16])) # x
+
+sign_extend_8_16 : [8] -> [16]
+sign_extend_8_16 x = (if (x@0) then (~zero:[8]) else (zero:[8])) # x
+
+sign_extend_8_32 : [8] -> [32]
+sign_extend_8_32 x = (if (x@0) then (~zero:[24]) else (zero:[24])) # x
 
 
-primitive fiat_mul_scalar_rwnaf : scalar -> [55]point_id
+fiat_mul_scalar_rwnaf_loop_body : scalar -> [55][16] -> [16] -> [64] -> ([55][16], [16])
+fiat_mul_scalar_rwnaf_loop_body s out window i = (out', window')
+  where
+    d = ((window && P384_MUL_WSIZE_MASK) - P384_MUL_TWO_TO_WSIZE)
+    out' = update out i d
+    // Not sure why this is unsigned shift && some constant, but that's what the code does
+    window_0 = (((sign_extend_16_64 window) - (sign_extend_16_64 d)) >> P384_MUL_WSIZE) && 33554431
+    i_wsize = (drop`{32} i) * P384_MUL_WSIZE
+    window_1 = window_0 + ((fiat_get_bit s (i_wsize + (P384_MUL_WSIZE + 1))) << 1)
+    window_2 = window_1 + ((fiat_get_bit s (i_wsize + (P384_MUL_WSIZE + 2))) << 2)
+    window_3 = window_2 + ((fiat_get_bit s (i_wsize + (P384_MUL_WSIZE + 3))) << 3)
+    window_4 = window_3 + ((fiat_get_bit s (i_wsize + (P384_MUL_WSIZE + 4))) << 4)
+    window_5 = window_4 + ((fiat_get_bit s (i_wsize + (P384_MUL_WSIZE + 5))) << 5)
+    window_6 = window_5 + ((fiat_get_bit s (i_wsize + (P384_MUL_WSIZE + 6))) << 6)
+    window_7 = window_6 + ((fiat_get_bit s (i_wsize + (P384_MUL_WSIZE + 7))) << 7)
+    window' = drop`{48} window_7
 
+fiat_mul_scalar_rwnaf : scalar -> [55]point_id -> [55]point_id
+fiat_mul_scalar_rwnaf in buf = out'
+  where
+    window = zero # (((drop`{376} in) && (drop`{8} P384_MUL_WSIZE_MASK)) || 1)
+    f (z, w) i = fiat_mul_scalar_rwnaf_loop_body in z w i
+    (out, window') = foldl f (buf, window) [0 .. 53]
+    out' = update out 54 window'
+
+/*
 fiat_select_point : [64] -> point_table -> point
 fiat_select_point i t = t@i
+*/
+
+fiat_select_point_loop_body : [64] -> point -> [64] -> point -> point
+fiat_select_point_loop_body idx acc i p = [x, y, z]
+  where 
+    mismatch = i ^ idx
+    x = (fiat_field_cmovznz mismatch (p@0) (acc@0))
+    y = (fiat_field_cmovznz mismatch (p@1) (acc@1))
+    z = (fiat_field_cmovznz mismatch (p@2) (acc@2))
+   
+fiat_select_point_ct : [64] -> point_table -> point
+fiat_select_point_ct idx t = 
+  foldl f def (zip (take [0...]) t)
+    where
+      def = [zero_felem, zero_felem, zero_felem]
+      f acc (i, p) = fiat_select_point_loop_body idx acc i p
+
 
 conditional_subtract_if_even_ct : point -> scalar -> point -> point
 conditional_subtract_if_even_ct p1 t p2 = r where
-  t_limb = (byte_to_limb ((take`{8} t) && 1))
+  t_limb = (byte_to_limb ((drop`{376} t) && 1))
   tmp1 = [p2@0, (fiat_field_opp (p2@1)), p2@2]
   tmp2 = fiat_point_add 0 p1 tmp1
   r = [(fiat_field_cmovznz t_limb (tmp2@0) (p1@0)), 
@@ -180,33 +249,20 @@ fiat_double_add_body t p d = res
     is_neg = (d >> 7) && 1
     abs_d = (d ^ (-is_neg)) + is_neg
     idx = abs_d >>$ 1
-    tmp = (fiat_select_point (sign_extend_16_64 idx) t)
+    tmp = (fiat_select_point_ct (sign_extend_16_64 idx) t)
     ftmp = fiat_field_opp (tmp@1)
     r = [tmp@0, (fiat_field_cmovznz (point_id_to_limb is_neg) (tmp@1) ftmp), (tmp@2)]
     res = fiat_point_add 0 doubled r
-
-sign_extend_16_64 : [16] -> [64]
-sign_extend_16_64 x = (if (x@0) then (~zero:[48]) else (zero:[48])) # x
 
 fiat_point_mul : point -> scalar -> point
 fiat_point_mul p s = r
   where
     pre_comp = fiat_pre_comp_table p
-    rnaf = fiat_mul_scalar_rwnaf s
+    rnaf = fiat_mul_scalar_rwnaf s (repeat 0)
     idx = ((rnaf@54) >>$ 1)
-    acc = (fiat_select_point (sign_extend_16_64 idx) pre_comp)
+    acc = (fiat_select_point_ct (sign_extend_16_64 idx) pre_comp)
     res = foldl (fiat_double_add_body pre_comp) acc (rnaf @@ [53, 52 .. 0])
     r = conditional_subtract_if_even_ct res s (pre_comp@0)
-
-/*
-fiat_point_mul p s = r
-  where
-    pre_comp = fiat_pre_comp_table p
-    rnaf = fiat_mul_scalar_rwnaf s
-    acc = (fiat_select_point ((rnaf@54) >> 1) pre_comp )
-    res = foldl (fiat_double_add_body pre_comp) acc (rnaf @@ [1, 0])
-    r = conditional_subtract_if_even_ct res s p
-*/
 
 fiat_point_mul_generic : JacobianBVPoint -> scalar -> JacobianBVPoint
 fiat_point_mul_generic p s = r
