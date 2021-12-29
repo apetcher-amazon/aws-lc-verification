@@ -1,0 +1,12 @@
+diff --git a/third_party/fiat/p384_64.h b/third_party/fiat/p384_64.h
+index 86dff393f..e58060a62 100644
+--- a/third_party/fiat/p384_64.h
++++ b/third_party/fiat/p384_64.h
+@@ -3274,6 +3274,7 @@ static void fiat_p384_to_bytes(uint8_t out1[48], const uint64_t arg1[6]) {
+  * Output Bounds:
+  *   out1: [[0x0 ~> 0xffffffffffffffff], [0x0 ~> 0xffffffffffffffff], [0x0 ~> 0xffffffffffffffff], [0x0 ~> 0xffffffffffffffff], [0x0 ~> 0xffffffffffffffff], [0x0 ~> 0xffffffffffffffff]]
+  */
++__attribute__((noinline))
+ static void fiat_p384_from_bytes(uint64_t out1[6], const uint8_t arg1[48]) {
+   uint64_t x1;
+   uint64_t x2;

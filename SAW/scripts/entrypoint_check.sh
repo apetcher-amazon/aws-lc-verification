@@ -33,6 +33,8 @@ apply_patch "noinline-fiat_p384_nz"
 apply_patch "noinline-fiat_p384_cmovznz"
 apply_patch "noinline-fiat_p384_from_generic"
 apply_patch "noinline-fiat_p384_to_generic"
+apply_patch "noinline-fiat_p384_from_bytes"
+apply_patch "noinline-fiat_p384_to_bytes"
 apply_patch "noinline-fiat_p384_select_point"
 apply_patch "noinline-fiat_p384_get_bit"
 

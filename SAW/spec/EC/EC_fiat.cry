@@ -163,7 +163,13 @@ fiat_pre_comp_table p = foldl f (repeat p) [1..63]
     twoP = (fiat_point_double p)
     f z i  = update z i (fiat_point_add 0 twoP (z@(i-1)))
 
-primitive fiat_get_bit : scalar -> [32] -> [64]
+fiat_get_bit : scalar -> [32] -> [64]
+fiat_get_bit s i = ((zero:[32]) # r)
+  where
+    s' = reverse (split`{48} s)
+    byte = (zero:[24]) # (s'@(i >>$ 3))
+    b = (byte >> (i && 7)) && 1
+    r = if (i > 383) then zero else b
 
 sign_extend_16_64 : [16] -> [64]
 sign_extend_16_64 x = (if (x@0) then (~zero:[48]) else (zero:[48])) # x
@@ -203,10 +209,8 @@ fiat_mul_scalar_rwnaf in buf = out'
     (out, window') = foldl f (buf, window) [0 .. 53]
     out' = update out 54 window'
 
-/*
 fiat_select_point : [64] -> point_table -> point
 fiat_select_point i t = t@i
-*/
 
 fiat_select_point_loop_body : [64] -> point -> [64] -> point -> point
 fiat_select_point_loop_body idx acc i p = [x, y, z]
@@ -218,7 +222,7 @@ fiat_select_point_loop_body idx acc i p = [x, y, z]
    
 fiat_select_point_ct : [64] -> point_table -> point
 fiat_select_point_ct idx t = 
-  foldl f def (zip (take [0...]) t)
+  foldl f def (zip (take [0..63]) t)
     where
       def = [zero_felem, zero_felem, zero_felem]
       f acc (i, p) = fiat_select_point_loop_body idx acc i p
@@ -233,8 +237,8 @@ conditional_subtract_if_even_ct p1 t p2 = r where
       (fiat_field_cmovznz t_limb (tmp2@1) (p1@1)), 
       (fiat_field_cmovznz t_limb (tmp2@2) (p1@2))]
 
-primitive fiat_from_generic : [384] -> felem
-primitive fiat_to_generic : felem -> [384]
+primitive fiat_from_bytes : [384] -> felem
+primitive fiat_to_bytes : felem -> [384]
 
 point_id_to_limb : point_id -> limb 
 point_id_to_limb x = (0:[48]) # (x)
@@ -267,11 +271,11 @@ fiat_point_mul p s = r
 fiat_point_mul_generic : JacobianBVPoint -> scalar -> JacobianBVPoint
 fiat_point_mul_generic p s = r
   where
-    px = fiat_from_generic p.X
-    py = fiat_from_generic p.Y
-    pz = fiat_from_generic p.Z
+    px = fiat_from_bytes p.X
+    py = fiat_from_bytes p.Y
+    pz = fiat_from_bytes p.Z
     r_fiat = (fiat_point_mul [px, py, pz] s)
-    r = {X = fiat_to_generic (r_fiat@0), Y = fiat_to_generic (r_fiat@1), Z = fiat_to_generic (r_fiat@2)}
+    r = {X = fiat_to_bytes (r_fiat@0), Y = fiat_to_bytes (r_fiat@1), Z = fiat_to_bytes (r_fiat@2)}
 
 
 
