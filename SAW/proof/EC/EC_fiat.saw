@@ -5,6 +5,8 @@
 
 let limb_length = 64;
 let p384_felem_limbs = 6;
+let wsize = 7;
+let tsize = 64;
 
 let points_to_point x_ptr y_ptr z_ptr point = do {
   crucible_points_to x_ptr (crucible_term {{ point@0 }});
@@ -212,7 +214,7 @@ let p384_mul_scalar_rwnaf_spec = do {
  
   crucible_execute_func [rnaf_ptr, scalar_ptr];
 
-  crucible_points_to rnaf_ptr (crucible_term {{ fiat_mul_scalar_rwnaf scalar rnaf}});
+  crucible_points_to rnaf_ptr (crucible_term {{ fiat_mul_scalar_rwnaf`{wsize} scalar rnaf}});
 };
 
 let p384_opp_spec = do {
@@ -401,7 +403,7 @@ let p384_fiat_point_mul_spec = do {
 
   crucible_execute_func [res_ptr, table_ptr, scalar_ptr];
 
-  crucible_points_to res_ptr (crucible_term {{ fiat_point_mul p scalar }});
+  crucible_points_to res_ptr (crucible_term {{ fiat_point_mul`{wsize, tsize} p scalar }});
 };
 
 let p384_point_mul_spec = do {
@@ -415,7 +417,7 @@ let p384_point_mul_spec = do {
   crucible_execute_func [group_ptr, r_ptr, p_ptr, scalar_ptr];
 
   points_to_EC_RAW_POINT r_ptr 
-    {{ fiat_point_mul_generic p scalar }};
+    {{ fiat_point_mul_generic`{wsize, tsize} p scalar }};
 };
 
 

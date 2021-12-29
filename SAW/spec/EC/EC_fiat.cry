@@ -16,7 +16,7 @@ primitive fiat_field_zero : felem
 zero_felem: felem
 zero_felem = [0, 0, 0, 0, 0, 0]
 
-
+/*
 P384_MUL_WSIZE : [32]
 P384_MUL_WSIZE = 7
 
@@ -25,6 +25,24 @@ P384_MUL_WSIZE_MASK = (1 << 8) - 1
 
 P384_MUL_TWO_TO_WSIZE : [16]
 P384_MUL_TWO_TO_WSIZE = (1 << 7)
+*/
+
+type point_id = [16]
+type bit_length = 384
+type scalar = [bit_length]
+//type wsize = 7
+// can't do bit shifts in type exprs?
+//type table_size = 1 << (wsize-1)
+//type table_size = 64
+
+/*
+// only correct when window size does not divide bit length
+type num_windows = (bit_length / wsize) + 1
+type point_table = [table_size]point
+
+two_to_wsize = (1 << `wsize)
+wsize_mask = (1 << (`wsize + 1)) - 1
+*/
 
 primitive fiat_field_one : felem
 
@@ -151,17 +169,11 @@ fiat_point_add mixed p1 p2 = p
 
     p = if is_nontrivial_double then (fiat_point_double p1) else [x3, y3, z3]
 
-
-type scalar = [384]
-type point_table = [64]point
-type point_id = [16]
-type wsize = 7
-
-fiat_pre_comp_table : point -> point_table
-fiat_pre_comp_table p = foldl f (repeat p) [1..63]
+fiat_pre_comp_table : {tsize} (fin tsize, tsize>1) => point -> [tsize]point
+fiat_pre_comp_table p = scanl f p [1..(tsize-1)]
   where
     twoP = (fiat_point_double p)
-    f z i  = update z i (fiat_point_add 0 twoP (z@(i-1)))
+    f z i  = (fiat_point_add 0 twoP z)
 
 fiat_get_bit : scalar -> [32] -> [64]
 fiat_get_bit s i = ((zero:[32]) # r)
@@ -184,32 +196,33 @@ sign_extend_8_32 : [8] -> [32]
 sign_extend_8_32 x = (if (x@0) then (~zero:[24]) else (zero:[24])) # x
 
 
-fiat_mul_scalar_rwnaf_loop_body : scalar -> [55][16] -> [16] -> [64] -> ([55][16], [16])
+fiat_mul_scalar_rwnaf_loop_body : {wsize} (fin wsize, wsize>0, wsize<9999) => 
+  scalar -> [(bit_length/wsize) + 1][16] -> 
+  [16] -> [64] -> ([(bit_length/wsize) + 1][16], [16])
+
 fiat_mul_scalar_rwnaf_loop_body s out window i = (out', window')
   where
-    d = ((window && P384_MUL_WSIZE_MASK) - P384_MUL_TWO_TO_WSIZE)
+    two_to_wsize = (1 << `wsize)
+    wsize_mask = (1 << (`wsize + 1)) - 1
+    d = ((window && (wsize_mask:[16])) - (two_to_wsize:[16]))
     out' = update out i d
     // Not sure why this is unsigned shift && some constant, but that's what the code does
-    window_0 = (((sign_extend_16_64 window) - (sign_extend_16_64 d)) >> P384_MUL_WSIZE) && 33554431
-    i_wsize = (drop`{32} i) * P384_MUL_WSIZE
-    window_1 = window_0 + ((fiat_get_bit s (i_wsize + (P384_MUL_WSIZE + 1))) << 1)
-    window_2 = window_1 + ((fiat_get_bit s (i_wsize + (P384_MUL_WSIZE + 2))) << 2)
-    window_3 = window_2 + ((fiat_get_bit s (i_wsize + (P384_MUL_WSIZE + 3))) << 3)
-    window_4 = window_3 + ((fiat_get_bit s (i_wsize + (P384_MUL_WSIZE + 4))) << 4)
-    window_5 = window_4 + ((fiat_get_bit s (i_wsize + (P384_MUL_WSIZE + 5))) << 5)
-    window_6 = window_5 + ((fiat_get_bit s (i_wsize + (P384_MUL_WSIZE + 6))) << 6)
-    window_7 = window_6 + ((fiat_get_bit s (i_wsize + (P384_MUL_WSIZE + 7))) << 7)
+    window_0 = (((sign_extend_16_64 window) - (sign_extend_16_64 d)) >> (`wsize:[32])) && 33554431
+    i_wsize = (drop`{32} i) * (`wsize:[32])
+    window_7 = foldl f window_0 [1..7]
+    f a j = a + ((fiat_get_bit s (i_wsize + ((`wsize:[32]) + j))) << j)
     window' = drop`{48} window_7
 
-fiat_mul_scalar_rwnaf : scalar -> [55]point_id -> [55]point_id
+fiat_mul_scalar_rwnaf : {wsize} (fin wsize, wsize>0, wsize<9999, bit_length/wsize>1) => scalar -> [(bit_length / wsize) + 1]point_id -> [(bit_length / wsize) + 1]point_id
 fiat_mul_scalar_rwnaf in buf = out'
   where
-    window = zero # (((drop`{376} in) && (drop`{8} P384_MUL_WSIZE_MASK)) || 1)
-    f (z, w) i = fiat_mul_scalar_rwnaf_loop_body in z w i
-    (out, window') = foldl f (buf, window) [0 .. 53]
-    out' = update out 54 window'
+    wsize_mask = (1 << (`wsize + 1)) - 1
+    window = zero # (((drop`{376} in) && (drop`{8} (wsize_mask:[16]))) || 1)
+    f (z, w) i = fiat_mul_scalar_rwnaf_loop_body`{wsize} in z w i
+    (out, window') = foldl f (buf, window) [0 .. ((bit_length/wsize) - 1)]
+    out' = update out (`bit_length/`wsize) window'
 
-fiat_select_point : [64] -> point_table -> point
+fiat_select_point : {tsize} (fin tsize) => [64] -> [tsize]point -> point
 fiat_select_point i t = t@i
 
 fiat_select_point_loop_body : [64] -> point -> [64] -> point -> point
@@ -220,12 +233,12 @@ fiat_select_point_loop_body idx acc i p = [x, y, z]
     y = (fiat_field_cmovznz mismatch (p@1) (acc@1))
     z = (fiat_field_cmovznz mismatch (p@2) (acc@2))
    
-fiat_select_point_ct : [64] -> point_table -> point
-fiat_select_point_ct idx t = 
-  foldl f def (zip (take [0..63]) t)
+fiat_select_point_ct : {tsize}(fin tsize, tsize>1, tsize<9999) => [64] -> [tsize]point -> point
+fiat_select_point_ct idx t = foldl f def (zip [0..(tsize-1)] t)
     where
       def = [zero_felem, zero_felem, zero_felem]
       f acc (i, p) = fiat_select_point_loop_body idx acc i p
+    
 
 
 conditional_subtract_if_even_ct : point -> scalar -> point -> point
@@ -246,7 +259,7 @@ point_id_to_limb x = (0:[48]) # (x)
 byte_to_limb : [8] -> limb 
 byte_to_limb x = (0:[56]) # (x)
 
-fiat_double_add_body : point_table -> point -> point_id -> point
+fiat_double_add_body : {wsize, tsize} (fin wsize, wsize > 1, fin tsize, tsize>1, tsize<9999) => [tsize]point -> point -> point_id -> point
 fiat_double_add_body t p d = res
   where
     doubled = foldl (\x -> \y -> fiat_point_double x) p [0 .. (wsize - 1)]
@@ -258,23 +271,23 @@ fiat_double_add_body t p d = res
     r = [tmp@0, (fiat_field_cmovznz (point_id_to_limb is_neg) (tmp@1) ftmp), (tmp@2)]
     res = fiat_point_add 0 doubled r
 
-fiat_point_mul : point -> scalar -> point
+fiat_point_mul : {wsize, tsize} (fin wsize, wsize>1, wsize<9999, bit_length/wsize>1, fin tsize, tsize>1, tsize<9999) => point -> scalar -> point
 fiat_point_mul p s = r
   where
-    pre_comp = fiat_pre_comp_table p
-    rnaf = fiat_mul_scalar_rwnaf s (repeat 0)
+    pre_comp = fiat_pre_comp_table`{tsize} p
+    rnaf = fiat_mul_scalar_rwnaf`{wsize} s (repeat 0)
     idx = ((rnaf@54) >>$ 1)
     acc = (fiat_select_point_ct (sign_extend_16_64 idx) pre_comp)
-    res = foldl (fiat_double_add_body pre_comp) acc (rnaf @@ [53, 52 .. 0])
+    res = foldl (fiat_double_add_body`{wsize} pre_comp) acc (rnaf @@ [53, 52 .. 0])
     r = conditional_subtract_if_even_ct res s (pre_comp@0)
 
-fiat_point_mul_generic : JacobianBVPoint -> scalar -> JacobianBVPoint
+fiat_point_mul_generic : {wsize, tsize} (fin wsize, wsize>1, wsize<9999, bit_length/wsize>1, fin tsize, tsize>1, tsize<9999) => JacobianBVPoint -> scalar -> JacobianBVPoint
 fiat_point_mul_generic p s = r
   where
     px = fiat_from_bytes p.X
     py = fiat_from_bytes p.Y
     pz = fiat_from_bytes p.Z
-    r_fiat = (fiat_point_mul [px, py, pz] s)
+    r_fiat = (fiat_point_mul`{wsize, tsize} [px, py, pz] s)
     r = {X = fiat_to_bytes (r_fiat@0), Y = fiat_to_bytes (r_fiat@1), Z = fiat_to_bytes (r_fiat@2)}
 
 
