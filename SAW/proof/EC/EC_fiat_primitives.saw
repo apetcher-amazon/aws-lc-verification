@@ -5,8 +5,6 @@
 
 let limb_length = 64;
 let p384_felem_limbs = 6;
-let wsize = 7;
-let tsize = 64;
 
 let points_to_point x_ptr y_ptr z_ptr point = do {
   crucible_points_to x_ptr (crucible_term {{ point@0 }});
@@ -198,25 +196,6 @@ let p384_to_bytes_spec = do {
   crucible_points_to outarg_ptr (crucible_term {{ fiat_to_bytes inarg}});
 };
 
-let p384_select_point_spec = do {
-  outarg_ptr <- crucible_alloc (llvm_array 3 (llvm_array p384_felem_limbs (llvm_int limb_length)));
-  id <- crucible_fresh_var "id" (llvm_int 64);
-  (points, points_ptr) <- ptr_to_fresh_readonly "points" (llvm_array 64 (llvm_array 3 (llvm_array p384_felem_limbs (llvm_int limb_length))));
- 
-  crucible_execute_func [outarg_ptr, (crucible_term id), points_ptr, (crucible_term {{ 64 }})];
-
-  crucible_points_to outarg_ptr (crucible_term {{ fiat_select_point_ct id points }});
-};
-
-let p384_mul_scalar_rwnaf_spec = do {
-  (rnaf, rnaf_ptr) <- ptr_to_fresh "rnaf" (llvm_array 55 (llvm_int 16));
-  (scalar, scalar_ptr) <- ptr_to_fresh_readonly "scalar" i384;
- 
-  crucible_execute_func [rnaf_ptr, scalar_ptr];
-
-  crucible_points_to rnaf_ptr (crucible_term {{ fiat_mul_scalar_rwnaf`{wsize} scalar rnaf}});
-};
-
 let p384_opp_spec = do {
   outarg_ptr <- crucible_alloc (llvm_array p384_felem_limbs (llvm_int limb_length));
   (inarg, inarg_ptr) <- ptr_to_fresh_readonly "inarg" (llvm_array p384_felem_limbs (llvm_int limb_length));
@@ -392,34 +371,6 @@ let points_to_fresh_EC_RAW_POINT ptr = do {
   crucible_points_to_untyped (crucible_field ptr "Z") (crucible_term Z);
   return {{ { X = X, Y = Y, Z = Z } : JacobianBVPoint }};
 };
-
-let p384_fiat_point_mul_spec = do {
-
-  res_ptr <- crucible_alloc (llvm_array 3 (llvm_array p384_felem_limbs (llvm_int limb_length)));
-  table_ptr <- crucible_alloc (llvm_array 64 (llvm_array 3 (llvm_array p384_felem_limbs (llvm_int limb_length))));
-  p <- crucible_fresh_var "p" (llvm_array 3 (llvm_array p384_felem_limbs (llvm_int limb_length)));
-  crucible_points_to (crucible_elem table_ptr 0) (crucible_term p);
-  (scalar, scalar_ptr) <- ptr_to_fresh_readonly "p_scalar" i384;
-
-  crucible_execute_func [res_ptr, table_ptr, scalar_ptr];
-
-  crucible_points_to res_ptr (crucible_term {{ fiat_point_mul`{wsize, tsize} p scalar }});
-};
-
-let p384_point_mul_spec = do {
-
-  group_ptr <- crucible_alloc_readonly (llvm_struct "struct.ec_group_st");
-  r_ptr <- crucible_alloc (llvm_struct "struct.EC_RAW_POINT");
-  p_ptr <- crucible_alloc_readonly (llvm_struct "struct.EC_RAW_POINT");
-  p <- points_to_fresh_EC_RAW_POINT p_ptr;
-  (scalar, scalar_ptr) <- ptr_to_fresh_readonly "p_scalar" i384;
-
-  crucible_execute_func [group_ptr, r_ptr, p_ptr, scalar_ptr];
-
-  points_to_EC_RAW_POINT r_ptr 
-    {{ fiat_point_mul_generic`{wsize, tsize} p scalar }};
-};
-
 
 fiat_p384_point_double_ov <- llvm_verify m "fiat_p384_point_double"
   [ value_barrier_u64_ov
@@ -623,30 +574,6 @@ fiat_p384_point_add_same_l_jac_ov <- llvm_verify m "fiat_p384_point_add"
     (w4_unint_z3 ["fiat_field_square", "fiat_field_mul", "fiat_field_add", "fiat_field_sub", "fiat_field_nz", "constant_time_is_zero_w", "fiat_field_cmovznz"]);
   });
 
-let p384_pre_comp_table_spec = do {
-  
-  table_ptr <- crucible_alloc (llvm_array 64 (llvm_array 3 (llvm_array p384_felem_limbs (llvm_int limb_length))));
-  p <- crucible_fresh_var "p" (llvm_array 3 (llvm_array p384_felem_limbs (llvm_int limb_length)));
-  crucible_points_to (crucible_elem table_ptr 0) (crucible_term p);
-  tmp_ptr <- crucible_alloc (llvm_array 3 (llvm_array p384_felem_limbs (llvm_int limb_length)));
-
-  crucible_execute_func [table_ptr, tmp_ptr];
-
-  crucible_points_to table_ptr (crucible_term {{fiat_pre_comp_table p}});
-};
-
-let fiat_p384_mul_loop_body_spec = do {
-  
-  (table, table_ptr) <- ptr_to_fresh_readonly "table" (llvm_array 64 (llvm_array 3 (llvm_array p384_felem_limbs (llvm_int limb_length))));
-  (p, p_ptr) <- ptr_to_fresh "p" (llvm_array 3 (llvm_array p384_felem_limbs (llvm_int limb_length)));
-  d <- crucible_fresh_var "d" (llvm_int 16);
-  tmp_ptr <- crucible_alloc (llvm_array 3 (llvm_array p384_felem_limbs (llvm_int limb_length)));
-
-  crucible_execute_func [p_ptr, (crucible_term d), tmp_ptr, table_ptr];
-
-  crucible_points_to p_ptr (crucible_term {{fiat_double_add_body table p d}});
-};
-
 let conditional_subtract_if_even_ct_spec = do {
   
   (res, res_ptr) <- ptr_to_fresh "res" (llvm_array 3 (llvm_array p384_felem_limbs (llvm_int limb_length)));
@@ -670,20 +597,6 @@ fiat_p384_to_bytes_ov <- crucible_llvm_unsafe_assume_spec
   p384_to_bytes_spec;
 
 
-fiat_p384_select_point_ov <- llvm_verify m
-  "fiat_p384_select_point" [fiat_p384_cmovznz_same_r_ov] true
-  p384_select_point_spec (w4_unint_z3 []);
-
-fiat_p384_mul_scalar_rwnaf_ov <- llvm_verify m
-  "fiat_p384_mul_scalar_rwnaf" 
-  [fiat_p384_get_bit_ov] 
-  true
-  p384_mul_scalar_rwnaf_spec
-  (do{
-  goal_eval_unint["fiat_get_bit"];
-  w4_unint_z3 ["fiat_get_bit"];
-  });
-
 fiat_p384_opp_ov <- crucible_llvm_unsafe_assume_spec m
   "fiat_p384_opp" 
   p384_opp_spec;
@@ -691,33 +604,5 @@ fiat_p384_opp_ov <- crucible_llvm_unsafe_assume_spec m
 fiat_p384_copy_ov <- crucible_llvm_unsafe_assume_spec m
   "fiat_p384_copy" 
   p384_copy_spec;
-
-fiat_p384_point_mul_ov <- llvm_verify m "ec_GFp_nistp384_point_mul"
-  [ value_barrier_u64_ov
-  , fiat_p384_point_add_jac_ov
-  , fiat_p384_point_add_same_r_jac_ov
-  , fiat_p384_point_add_same_l_jac_ov
-  , fiat_p384_point_double_ov
-  , fiat_p384_point_double_same_ov
-  , fiat_p384_from_bytes_ov
-  , fiat_p384_to_bytes_ov
-  , fiat_p384_cmovznz_ov
-  , fiat_p384_cmovznz_same_l_ov
-  , fiat_p384_cmovznz_same_r_ov
-  , fiat_p384_select_point_ov
-  , fiat_p384_mul_scalar_rwnaf_ov
-  , fiat_p384_opp_ov
-  , fiat_p384_copy_ov
-  ]
-  true
-  p384_point_mul_spec
-  (w4_unint_z3 ["fiat_field_square", "fiat_field_add", "fiat_field_sub", 
-  "fiat_field_mul",
-  "fiat_mul_scalar_rwnaf", "fiat_field_opp",
-   "fiat_select_point_ct", 
-  "fiat_field_cmovznz",
-  "fiat_to_bytes", "fiat_from_bytes"
-  ]);
-
 
 
