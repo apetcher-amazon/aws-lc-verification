@@ -21,7 +21,7 @@ From CryptolToCoq Require Import SAWCoreBitvectors.
 
 Print SAWCoreVectorsAsCoqVectors.
 
-From EC Require Import EC_fiat.
+From EC Require Import EC_fiat_7.
 
 From Crypto Require Import Algebra.Hierarchy.
 From Crypto Require Import Algebra.Field.
@@ -309,7 +309,7 @@ Section ECEqProof.
   Proof.
 
       intros [ [[x y] z] Hp ]; simpl.
-      unfold prodToSeq, seqToProd, fromPoint, fiat_point_double, EC_fiat.fiat_point_double; simpl.
+      unfold prodToSeq, seqToProd, fromPoint, fiat_point_double, EC_fiat_7.fiat_point_double; simpl.
       repeat rewrite fiat_field_square_spec.
       unfold sawAt, atWithDefault. simpl.
       unfold nth_order, nth. simpl.
@@ -385,7 +385,7 @@ Section ECEqProof.
   Proof.
       intros [ [[xa ya] za] Ha ] [ [[xb yb] zb] Hb ]; simpl.
     
-      unfold fiat_point_add_jac, fromPoint, fiat_point_add, EC_fiat.fiat_point_add, ecNotEq, ecEq, ecZero, ecAnd, ecOr, ecCompl, fiat_field_cmovznz; simpl.
+      unfold fiat_point_add_jac, fromPoint, fiat_point_add, EC_fiat_7.fiat_point_add, ecNotEq, ecEq, ecZero, ecAnd, ecOr, ecCompl, fiat_field_cmovznz; simpl.
       repeat rewrite fiat_field_square_spec.
       unfold sawAt, atWithDefault. simpl.
       
@@ -527,22 +527,26 @@ Section ECEqProof.
     prodToSeq (x, Fopp y, z).
 
   Theorem conditional_subtract_if_even_ct_jac_eq_ite : forall n p1 p2,
-    jac_eq (seqToProd (EC_fiat.conditional_subtract_if_even_ct Fsquare Fmul Fadd
+    jac_eq (seqToProd (EC_fiat_7.conditional_subtract_if_even_ct Fsquare Fmul Fadd
         Fsub Fopp p1 n p2)) (seqToProd (if (Nat.even (unsignedToNat n)) then (fiat_point_add false p1 (fiat_point_opp p2)) else p1)).
   Admitted.
+
+  Check groupMul_signedRegular.
+
+(*
 
   Theorem fiat_point_mul_signedRegular_equiv : forall n p,
     jac_eq
     (fromPoint
        (groupMul_signedRegular Jacobian.add zero_point
-          Jacobian.double Jacobian.opp wsize numWindows
+          Jacobian.double Jacobian.opp wsize p numWindows
           (unsignedToNat n) p))
     (seqToProd
        (fiat_point_mul min_l (prodToSeq (fromPoint p))
           n)).
 
     intros.
-    unfold groupMul_signedRegular, groupMul_signedRegularWindows, fiat_point_mul, EC_fiat.fiat_point_mul.
+    unfold groupMul_signedRegular, groupMul_signedRegularWindows, fiat_point_mul, EC_fiat_7.fiat_point_mul.
     eapply jac_eq_symm.
     eapply jac_eq_trans.
     eapply conditional_subtract_if_even_ct_jac_eq_ite.
@@ -609,10 +613,14 @@ Section ECEqProof.
 
   Qed.
 
+*)
+
 
 
   (* If we want to prove that the generic multiplication operation is correct, we need a group on generic points. *)
   (* probably sufficient to prove the fiat representation multiplcation operation is correct *)
+
+(*
 
   Definition fiat_point_mul_generic := fiat_point_mul_generic Fsquare Fmul Fadd Fsub Fopp min_l fiat_from_bytes fiat_to_bytes.
 
@@ -623,7 +631,7 @@ Section ECEqProof.
       (seqToProd (fiat_point_mul_generic (prodToSeq (fromPoint p)) n)).
   Qed.
 
-  
+  *)
 
 End ECEqProof.
 
