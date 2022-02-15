@@ -779,6 +779,11 @@ Section GroupMulWNAF.
 
   Qed.
 
+  Theorem last_last : 
+    forall (A : Type) (l : list A) (a d : A), last (l ++ a :: nil) d = a.
+
+  Admitted.
+
   Theorem windowsToZ_highWindowNonNeg : forall ws,
     RegularWindows ws ->
     0 <= (windowsToZ ws) ->
@@ -1260,6 +1265,7 @@ Section GroupMulWNAF.
     apply Z.add_nonneg_nonneg.
     apply Z.le_0_sub.
     apply Z.mod_le; trivial.
+    rewrite Z_double_sum.
     lia.
     lia.
 
@@ -1268,6 +1274,7 @@ Section GroupMulWNAF.
     rewrite Z.sub_sub_distr.
     assert (z - z mod Z.double twoToWsize <= Z.shiftl 1 (Z.of_nat (wsize + (wsize + nw * wsize))) - Z.double twoToWsize).
     eapply mod_clear_lt.
+    rewrite Z_double_sum.
     lia.  
     unfold twoToWsize.  
     rewrite Zdouble_shiftl.
@@ -1277,6 +1284,7 @@ Section GroupMulWNAF.
     lia.
     lia.
     lia.
+    rewrite Z_double_sum in *.
     lia.
  
     replace (Z.shiftl 1 (Z.of_nat (wsize + nw * wsize))) with  ((Z.shiftl 1 (Z.of_nat (wsize + (wsize + nw * wsize)))) / twoToWsize).
@@ -1312,6 +1320,7 @@ Section GroupMulWNAF.
     apply Zbool.Zeq_is_eq_bool.
     rewrite <- Zdiv.Zodd_mod.
     trivial.
+    rewrite Z_double_sum.
     lia.
     lia.
     rewrite Z.double_spec.
@@ -1329,6 +1338,7 @@ Section GroupMulWNAF.
     apply shiftl_pos.
     lia.
     lia.
+    rewrite Z_double_sum.
     lia.
     assert (z mod Z.double (Z.shiftl 1 (Z.of_nat wsize)) <> 0).
     rewrite Z.double_spec.
@@ -1371,6 +1381,7 @@ Section GroupMulWNAF.
     rewrite <- Zdiv.Zminus_mod_idemp_l.
     rewrite Z.sub_diag.
     apply Zdiv.Zmod_0_l.
+    rewrite Z_double_sum.
     lia.
     lia.
     rewrite Z.double_spec.

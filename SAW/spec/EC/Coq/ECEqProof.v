@@ -19,17 +19,15 @@ Import SAWCorePrelude.
 
 From CryptolToCoq Require Import SAWCoreBitvectors.
 
-Print SAWCoreVectorsAsCoqVectors.
-
-From EC Require Import EC_fiat_7.
-
 From Crypto Require Import Algebra.Hierarchy.
 From Crypto Require Import Algebra.Field.
 From Crypto Require Import Algebra.Nsatz.
 
 From Crypto Require Import Curves.Weierstrass.Jacobian.
 
-Require Import GroupMulWNAF.
+From Top Require Import GroupMulWNAF.
+From Top Require Import EC_fiat_P384_7.
+
 
 Set Implicit Arguments.
 
@@ -218,7 +216,7 @@ Section ECEqProof.
   Definition fromPoint (p:point) : (F*F*F) :=
     proj1_sig p.
 
-  Definition fiat_point_add := fiat_point_add Fsquare Fmul Fadd Fsub.
+  Definition fiat_point_add := fiat_point_add Fsquare Fmul Fsub Fadd.
   Definition fiat_point_add_jac := fiat_point_add false.
 
   Definition prodToSeq(p : F * F * F) : seq 3 F :=
@@ -301,7 +299,7 @@ Section ECEqProof.
      point-doubling procedure from fiat-crypto.
   *)
 
-  Definition fiat_point_double := fiat_point_double Fsquare Fmul Fadd Fsub.
+  Definition fiat_point_double := fiat_point_double Fsquare Fmul Fsub Fadd.
 
   Lemma double_eq_minus_3_h : forall p:point,
       fromPoint (Jacobian.double_minus_3 a_is_minus_3 p) =
@@ -309,10 +307,11 @@ Section ECEqProof.
   Proof.
 
       intros [ [[x y] z] Hp ]; simpl.
-      unfold prodToSeq, seqToProd, fromPoint, fiat_point_double, EC_fiat_7.fiat_point_double; simpl.
+      unfold prodToSeq, seqToProd, fromPoint, fiat_point_double, EC_fiat_P384_7.fiat_point_double; simpl.
       repeat rewrite fiat_field_square_spec.
       unfold sawAt, atWithDefault. simpl.
       unfold nth_order, nth. simpl.
+
       f_equal; intros.
 
       nsatz.
@@ -385,7 +384,7 @@ Section ECEqProof.
   Proof.
       intros [ [[xa ya] za] Ha ] [ [[xb yb] zb] Hb ]; simpl.
     
-      unfold fiat_point_add_jac, fromPoint, fiat_point_add, EC_fiat_7.fiat_point_add, ecNotEq, ecEq, ecZero, ecAnd, ecOr, ecCompl, fiat_field_cmovznz; simpl.
+      unfold fiat_point_add_jac, fromPoint, fiat_point_add, EC_fiat_P384_7.fiat_point_add, ecNotEq, ecEq, ecZero, ecAnd, ecOr, ecCompl, fiat_field_cmovznz; simpl.
       repeat rewrite fiat_field_square_spec.
       unfold sawAt, atWithDefault. simpl.
       
@@ -527,7 +526,7 @@ Section ECEqProof.
     prodToSeq (x, Fopp y, z).
 
   Theorem conditional_subtract_if_even_ct_jac_eq_ite : forall n p1 p2,
-    jac_eq (seqToProd (EC_fiat_7.conditional_subtract_if_even_ct Fsquare Fmul Fadd
+    jac_eq (seqToProd (EC_fiat_P384_7.conditional_subtract_if_even_ct Fsquare Fmul Fadd
         Fsub Fopp p1 n p2)) (seqToProd (if (Nat.even (unsignedToNat n)) then (fiat_point_add false p1 (fiat_point_opp p2)) else p1)).
   Admitted.
 

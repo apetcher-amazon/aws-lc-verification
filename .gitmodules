@@ -6,3 +6,9 @@
 	path = cryptol-specs
 	branch = sha-imperative
 	url = https://github.com/GaloisInc/cryptol-specs.git
+[submodule "SAW/spec/EC/Coq/fiat-crypto"]
+	path = SAW/spec/EC/Coq/fiat-crypto
+	url = https://github.com/mit-plv/fiat-crypto
+[submodule "SAW/spec/EC/Coq/saw-script"]
+	path = SAW/spec/EC/Coq/saw-script
+	url = https://github.com/GaloisInc/saw-script

@@ -3,8 +3,11 @@
 -Q fiat-crypto/src/ Crypto
 -Q fiat-crypto/rewriter/src ""
 
+-Q "" Top
+
 GroupMulWNAF.v
-EC_fiat_7.v
+EC_fiat_primitives.v
+EC_fiat_P384_7.v
 ECEqProof.v
 
 

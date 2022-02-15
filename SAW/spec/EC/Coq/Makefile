@@ -1,3 +1,6 @@
+
+NUM_CPU_THREADS=$(shell grep -c ^processor /proc/cpuinfo)
+
 # KNOWNTARGETS will not be passed along to CoqMakefile
 KNOWNTARGETS := CoqMakefile
 # KNOWNFILES will not get implicit targets from the final rule, and so
@@ -11,14 +14,17 @@ KNOWNFILES   := Makefile _CoqProject
 CoqMakefile: Makefile _CoqProject
 	$(COQBIN)coq_makefile -f _CoqProject -o CoqMakefile
 
-invoke-coqmakefile: CoqMakefile EC.v
+invoke-coqmakefile: CoqMakefile saw-core-coq fiat-crypto
 	$(MAKE) --no-print-directory -f CoqMakefile $(filter-out $(KNOWNTARGETS),$(MAKECMDGOALS))
 
-.PHONY: invoke-coqmakefile $(KNOWNFILES)
+fiat-crypto:
+	$(MAKE) -j $(NUM_CPU_THREADS) coq-without-bedrock2 -C fiat-crypto
 
-####################################################################
-##                      Your targets here                         ##
-####################################################################
+saw-core-coq:
+	$(MAKE) -j $(NUM_CPU_THREADS) -C saw-script/saw-core-coq/coq
+
+.PHONY: saw-core-coq fiat-crypto invoke-coqmakefile $(KNOWNFILES)
+
 
 
 # This should be the last rule, to handle any targets not declared above
