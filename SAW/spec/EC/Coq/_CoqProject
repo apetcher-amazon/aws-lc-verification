@@ -8,6 +8,7 @@
 GroupMulWNAF.v
 EC_fiat_primitives.v
 EC_fiat_P384_7.v
+EC_fiat_P384_gen.v
 ECEqProof.v
 
 

@@ -1967,9 +1967,12 @@ Section GroupMulWNAF.
   Variable numWindows : nat.
   Hypothesis numWindows_nz : numWindows <> 0%nat.
 
+  Definition groupMul_signedRegular_table p n := 
+    groupMul_signedRegular p (groupMul_signed_table (preCompTable p)) numWindows n.
+
   Theorem groupMul_signedRegular_table_correct : forall p n,
     Z.of_nat n < Z.shiftl 1 (Z.of_nat (numWindows * wsize)) ->
-    groupMul_signedRegular p (groupMul_signed_table (preCompTable p)) numWindows n == groupMul n p.
+    groupMul_signedRegular_table p n == groupMul n p.
 
     intros.
     eapply groupMul_signedRegular_correct; intros.

@@ -36,7 +36,9 @@ fiat_mul_scalar_rwnaf_loop_body s window i = (d, window')
     two_to_wsize = (1 << `wsize)
     wsize_mask = (1 << (`wsize + 1)) - 1
     d = ((window && (wsize_mask:[16])) - (two_to_wsize:[16]))
-    // Not sure why this is unsigned shift && some constant, but that's what the code does
+    // Not sure why this compiled to unsigned shift && some constant
+    // constant is 0x1FFFFFF, so this just masks off the sign bit and other high order bits
+    // This is correct because d <= window, so the difference is non-negative, and all these bits are 0
     window_0 = (((sign_extend_16_64 window) - (sign_extend_16_64 d)) >> (`wsize:[32])) && 33554431
     i_wsize = (drop`{32} i) * (`wsize:[32])
     window_7 = foldl f window_0 [1..7]
@@ -92,7 +94,7 @@ fiat_point_mul p s = r
     rnaf = fiat_mul_scalar_rwnaf s
     idx = ((rnaf@(`bit_length/`wsize)) >>$ 1)
     acc = (fiat_select_point_ct (sign_extend_16_64 idx) pre_comp)
-    res = foldl (fiat_double_add_body pre_comp) acc (rnaf @@ [bit_length/wsize-1, bit_length/wsize-2 .. 0])
+    res = foldl (fiat_double_add_body pre_comp) acc (drop `{1} (reverse rnaf))
     r = conditional_subtract_if_even_ct res s (pre_comp@0)
 
 fiat_point_mul_generic : JacobianBVPoint -> scalar -> JacobianBVPoint

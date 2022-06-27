@@ -270,6 +270,8 @@ fiat_p384_sub_same_l_ov <- crucible_llvm_unsafe_assume_spec
   "fiat_p384_sub"
   p384_field_sub_same_l_spec;
 
+fiat_get_bit_equiv <- prove_folding_theorem {{ \a b-> (fiat_get_bit a b) == (fiat_get_bit_ct a b) }};
+
 fiat_p384_get_bit_ov <- llvm_verify
   m
   "fiat_p384_get_bit"
@@ -277,6 +279,7 @@ fiat_p384_get_bit_ov <- llvm_verify
   true
   p384_get_bit_spec
   (do {
+    simplify (addsimps [fiat_get_bit_equiv] basic_ss);
     (goal_eval_unint []);
     (w4_unint_z3 []);
   });
