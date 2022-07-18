@@ -28,10 +28,10 @@ fiat_pre_comp_table p = scanl f p [1..(tsize-1)]
     f z i  = (fiat_point_add 0 twoP z)
 
 
-fiat_mul_scalar_rwnaf_loop_body :
+fiat_mul_scalar_rwnaf_loop_body_ct :
   scalar -> [16] -> [64] -> ([16], [16])
 
-fiat_mul_scalar_rwnaf_loop_body s window i = (d, window')
+fiat_mul_scalar_rwnaf_loop_body_ct s window i = (d, window')
   where
     two_to_wsize = (1 << `wsize)
     wsize_mask = (1 << (`wsize + 1)) - 1
@@ -39,21 +39,64 @@ fiat_mul_scalar_rwnaf_loop_body s window i = (d, window')
     // Not sure why this compiled to unsigned shift && some constant
     // constant is 0x1FFFFFF, so this just masks off the sign bit and other high order bits
     // This is correct because d <= window, so the difference is non-negative, and all these bits are 0
-    window_0 = (((sign_extend_16_64 window) - (sign_extend_16_64 d)) >> (`wsize:[32])) && 33554431
-    i_wsize = (drop`{32} i) * (`wsize:[32])
+    window_0 = (((sign_extend_16_64 window) - (sign_extend_16_64 d)) >> (`wsize:[32])) && 0x0000000001FFFFFF
+    i_wsize = (drop`{32} (i&&0x00000000000000FF)) * (`wsize:[32])
     window_7 = foldl f window_0 [1..7]
     f a j = a + ((fiat_get_bit s (i_wsize + ((`wsize:[32]) + j))) << j)
     window' = drop`{48} window_7
 
-fiat_mul_scalar_rwnaf : scalar -> [(bit_length / wsize) + 1]point_id
-fiat_mul_scalar_rwnaf in = out'
+fiat_mul_scalar_rwnaf_ct : scalar -> [(bit_length / wsize) + 1]point_id
+fiat_mul_scalar_rwnaf_ct in = out'
   where
     wsize_mask = (1 << (`wsize + 1)) - 1
     window = zero # (((drop`{bit_length-8} in) && (drop`{8} (wsize_mask:[16]))) || 1)
-    f (d, w) = fiat_mul_scalar_rwnaf_loop_body in w
+    f (d, w) = fiat_mul_scalar_rwnaf_loop_body_ct in w
     outls = scanl f (0, window) [0 .. ((bit_length/wsize) - 1)]
     window' = (outls!0).1
     out' = (drop`{1} ((map (\p -> p.0) outls)#[window']))
+
+fiat_mul_scalar_rwnaf_loop_body_1 : 
+  scalar -> [16] -> [64] -> ([16], [16])
+fiat_mul_scalar_rwnaf_loop_body_1 s window i = (d, window')
+  where
+    two_to_wsize = (1 << `wsize)
+    wsize_mask = (1 << (`wsize + 1)) - 1
+    d = ((window && (wsize_mask:[16])) - (two_to_wsize:[16]))
+    window_0 = (((sign_extend_16_64 window) - (sign_extend_16_64 d)) >> (`wsize:[32]))
+    i_wsize = (drop`{32} (i&&0x00000000000000FF)) * (`wsize:[32])
+    bit_0_pos = i_wsize + (`wsize:[32])
+    window_7 = window_0 + ((drop (s>>bit_0_pos) && (0x00000000000000FE : [64])))
+    window' = drop`{48} window_7
+
+
+fiat_mul_scalar_rwnaf_1 : scalar -> [(bit_length / wsize) + 1]point_id
+fiat_mul_scalar_rwnaf_1 in = out'
+  where
+    wsize_mask = (1 << (`wsize + 1)) - 1
+    window = zero # (((drop`{bit_length-8} in) && (drop`{8} (wsize_mask:[16]))) || 1)
+    f (d, w) = fiat_mul_scalar_rwnaf_loop_body_1 in w
+    outls = scanl f (0, window) [0 .. ((bit_length/wsize) - 1)]
+    window' = (outls!0).1
+    out' = (drop`{1} ((map (\p -> p.0) outls)#[window']))
+
+fiat_mul_scalar_rwnaf_odd_loop_body : 
+  scalar -> ([16], scalar)
+fiat_mul_scalar_rwnaf_odd_loop_body s = (drop d, s')
+  where
+    two_to_wsize = (1 << `wsize)
+    d = ((s % (2 * two_to_wsize)) - two_to_wsize)
+    s' = (s - d) >> `wsize
+
+fiat_mul_scalar_rwnaf_odd : scalar -> [(bit_length / wsize) + 1]point_id
+fiat_mul_scalar_rwnaf_odd in = out'
+  where
+    f (d, s) i = fiat_mul_scalar_rwnaf_odd_loop_body s
+    outls = scanl f (fiat_mul_scalar_rwnaf_odd_loop_body in) [0 .. ((bit_length/wsize) - 2)]
+    window' = (drop (outls!0).1)
+    out' = ((map (\p -> p.0) outls)#[window'])
+
+fiat_mul_scalar_rwnaf : scalar -> [(bit_length / wsize) + 1]point_id 
+fiat_mul_scalar_rwnaf in = fiat_mul_scalar_rwnaf_odd (in || 1)
 
 fiat_select_point : [64] -> [tsize]point -> point
 fiat_select_point i t = t@i

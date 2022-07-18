@@ -983,6 +983,123 @@ Section GroupMulWNAF.
       k_i :: (recode_rwnaf_odd nw' n')
     end.
 
+  Fixpoint recode_rwnaf_odd' (nw : nat)(n : Z) :=
+    match nw with
+    | 0%nat => n :: nil
+    | S nw' =>
+      let k_i := (n mod (Z.double twoToWsize)) - twoToWsize in
+      let n' := (n - k_i) / twoToWsize in
+      k_i :: (recode_rwnaf_odd' nw' n')
+    end.
+
+  Theorem twoToWsize_pos : 
+    0 < twoToWsize.
+
+    intros.
+    unfold twoToWsize.
+    rewrite Z.shiftl_mul_pow2.
+    apply Z.mul_pos_pos.
+    lia.
+    apply Z.pow_pos_nonneg.
+    lia.
+    lia.
+    lia.
+  Qed.
+
+  Theorem twoToWsize_nonneg : 
+    0 <= twoToWsize.
+
+    pose proof twoToWsize_pos.
+    lia.
+
+  Qed.
+
+  Theorem double_twoToWsize_pos : 
+    0 < Z.double twoToWsize.
+
+    rewrite Z.double_spec.
+    pose proof twoToWsize_pos.
+    lia.
+  Qed.
+
+
+
+  Theorem recode_rwnaf_odd'_equiv : forall nw n,
+    0 <= n < Z.shiftl 1 (Z.of_nat ((S nw) * wsize)) ->
+    recode_rwnaf_odd nw n = recode_rwnaf_odd' nw n.
+    
+    induction nw; intros; simpl in *.
+    f_equal.
+    rewrite Z.mod_small; trivial.
+    rewrite plus_0_r in *.
+    trivial.
+
+    f_equal.
+    eapply IHnw.
+    intuition idtac.
+
+    apply Z.div_pos.
+    apply Zorder.Zle_minus_le_0.
+    eapply Z.le_trans.
+    eapply Z.sub_le_mono.
+    apply Z.mod_le.
+    trivial.
+    apply double_twoToWsize_pos.
+    reflexivity.
+    apply Z.le_sub_nonneg.
+    apply twoToWsize_nonneg.
+    apply twoToWsize_pos.
+
+    (* two cases
+      A) The high bit of (n mod Z.double twoToWsize) is 1, 
+        so (n mod Z.double twoToWsize) - twoToWsize is positive.
+        Subtracting this value from n gives something less than n, 
+        and the rest is trivial
+      B) The hig bit of (n mod Z.double twoToWsize) is 0,
+        so (n mod Z.double twoToWsize) - twoToWsize is negative.
+        Subtracting this value from n gives something that is at most (n + twoToWsize).
+        Worst case, that bit is set to 1, and the number of bits does not increase.
+        The rest is trivial.
+    *)
+    
+    unfold twoToWsize.
+    repeat rewrite Z.shiftl_1_l in *.
+
+    assert ((n - (n mod Z.double (2 ^ Z.of_nat wsize) - 2 ^ Z.of_nat wsize)) < 2 ^ Z.of_nat (wsize + (wsize + nw * wsize))).
+    
+    destruct (Zorder.dec_Zlt (n mod Z.double (2 ^ Z.of_nat wsize) ) ( 2 ^ Z.of_nat wsize)).
+    
+    rewrite Z.sub_sub_distr.
+    eapply Z.le_lt_trans.
+    eapply Zorder.Zplus_le_compat_r.
+    apply Z.le_sub_nonneg.
+    apply Z.mod_pos_bound.
+    admit.
+    
+
+  admit.
+  admit.
+(* 1 left*)
+
+    eapply (@Zorder.Zmult_lt_reg_r _ _ (2 ^ (Z.of_nat wsize))).
+    admit.
+    
+    replace (2 ^ Z.of_nat (wsize + nw * wsize) * 2 ^ Z.of_nat wsize) with (2 ^ Z.of_nat (wsize + (wsize + nw * wsize))).
+
+    eapply Z.le_lt_trans; eauto.
+    remember (n - (n mod Z.double (2 ^ Z.of_nat wsize) - 2 ^ Z.of_nat wsize)) as a.
+    rewrite (Z.mul_comm).
+    apply Z.mul_div_le.
+    admit.
+    rewrite <- Z.pow_add_r.
+    rewrite <- Znat.Nat2Z.inj_add.
+    rewrite plus_comm.
+    reflexivity.
+    admit.
+    admit.
+
+Admitted.
+
   Theorem mod_div_prod : forall a b c,
     0 < b ->
     c <> 0 ->
