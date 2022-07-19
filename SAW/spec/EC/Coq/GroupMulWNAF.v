@@ -971,7 +971,7 @@ Section GroupMulWNAF.
 
   Fixpoint recode_rwnaf_odd (nw : nat)(n : Z) :=
     match nw with
-    | 0%nat => n :: nil
+    | 0%nat => (n mod twoToWsize) :: nil
     | S nw' =>
       let k_i := (n mod (Z.double twoToWsize)) - twoToWsize in
       let n' := (n - k_i) / twoToWsize in
@@ -1234,13 +1234,30 @@ Section GroupMulWNAF.
     rewrite Zdiv.Zodd_mod.
     intuition.
     apply Zbool.Zeq_is_eq_bool.
+    rewrite Zmod_mod_gen.
     rewrite Zdiv.Zodd_mod in H.
     apply Zbool.Zeq_is_eq_bool in H.
     trivial.
-    rewrite plus_0_r in *.
     lia.
+    lia.
+    unfold twoToWsize.
+    rewrite Z.shiftl_mul_pow2.
+    rewrite Z.mul_1_l.
+    apply pow_mod_0; intuition.
+    lia.
+ 
+    (* prove that window is small *)
+    rewrite Z.abs_eq.
+    apply Zdiv.Z_mod_lt.
+    apply shiftl_pos.
+    lia.
+    lia.
+    eapply Zdiv.Z_mod_lt. trivial.
+
     rewrite zDouble_n_id.
-    lia.
+    rewrite Z.add_0_r.
+    rewrite Nat.add_0_r in *.
+    apply Z.mod_small; intuition.
 
     assert (twoToWsize >  0).
     apply shiftl_pos. lia. lia.

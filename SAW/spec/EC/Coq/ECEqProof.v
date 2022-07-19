@@ -6,6 +6,8 @@ From Coq Require Import Ring.
 From Coq Require Import Setoid.
 From Coq Require Import ZArith.BinInt.
 From Coq Require Import Classes.SetoidClass.
+From Coq Require Import Lia.
+
 
 From CryptolToCoq Require Import SAWCoreScaffolding.
 From CryptolToCoq Require Import SAWCoreVectorsAsCoqVectors.
@@ -120,6 +122,8 @@ x = nil (Vec n2 bool) /\ y = gen n2 bool (fun _ : Nat => false))); eauto; intuit
   edestruct ecOr_0_if; eauto.
 
 Qed.
+
+Require Import CryptolToCoq.SAWCoreVectorsAsCoqVectors.
 
 Section ECEqProof.
 
@@ -514,7 +518,7 @@ Section ECEqProof.
   Definition windowsSeqToList (n : nat)(s : seq n (seq 16 Bool)) : list SignedWindow := 
     List.map (toSignedInteger 16) (seqToList s).
 
-Definition fiat_pre_comp_table_gen (pred_pred_tsize : nat)
+  Definition fiat_pre_comp_table_gen (pred_pred_tsize : nat)
     (p : CryptolPrimitivesForSAWCore.seq (CryptolPrimitivesForSAWCore.TCNum 3) (CryptolPrimitivesForSAWCore.seq (CryptolPrimitivesForSAWCore.TCNum 6) (CryptolPrimitivesForSAWCore.seq (CryptolPrimitivesForSAWCore.TCNum 64) SAWCoreScaffolding.Bool)))  :=
    
 (scanl Integer (Vec 3 (Vec 6 (bitvector 64))) (S pred_pred_tsize)
@@ -530,7 +534,7 @@ Definition fiat_pre_comp_table_gen (pred_pred_tsize : nat)
     reflexivity.
 
   Qed.
-
+  
 
   Fixpoint preCompTable_fix (p : point) n prev :=
     match n with
@@ -634,6 +638,7 @@ Definition fiat_pre_comp_table_gen (pred_pred_tsize : nat)
     
   Qed.
 
+(*
   Theorem recode_rwnaf_odd_eq_fold_list : forall pred_numWindows wsize n,
     (BinInt.Z.of_nat (unsignedToNat n) <
  BinInt.Z.shiftl 1 (BinInt.Z.of_nat ((S pred_numWindows) * wsize)))%Z ->
@@ -662,6 +667,7 @@ Definition fiat_pre_comp_table_gen (pred_pred_tsize : nat)
     econstructor.
 
   Abort.
+*)
 
   Fixpoint bv64Nats_h n v :=
     match n with
@@ -708,21 +714,102 @@ Definition fiat_pre_comp_table_gen (pred_pred_tsize : nat)
 
   Definition nats n := nats_h n 0.
 
+  Theorem toN_int_excl_length : forall n, 
+    List.length (toN_excl_int n) = n.
 
-  Theorem foo : forall pred_numWindows wsize n z w,
-    List.Forall2 (fun (x : Z) (y : bitvector 16) => x = spec.toZ (bvToBITS y))
-  (recode_rwnaf_odd wsize pred_numWindows z)
-  (fold_list (fiat_mul_scalar_rwnaf_loop_body n) (bv64Nats pred_numWindows) w).
+    induction n; intuition idtac; simpl in *.
 
-    induction pred_numWindows; intros.
-    simpl in *.
-    admit.
-
-    Local Opaque fiat_mul_scalar_rwnaf_loop_body.
+    rewrite app_length.
+    rewrite IHn.
     simpl.
-    econstructor.
-        
+    lia.
 
+  Qed.
+
+  Theorem toN_int_length : forall n, 
+    List.length (toN_int n) = (S n).
+
+    intros.
+    unfold toN_int.
+    rewrite app_length.
+    rewrite toN_int_excl_length.
+    simpl.
+    lia.
+
+  Qed.
+
+
+  Theorem scanl_fix_convert : forall (A1 A2 B1 B2: Type)
+    (conva : A2 -> A1)(convb : B2 -> B1)
+    (f1 : A1 -> A1)(f2 : A2 -> A2)
+    (fb1 : A1 -> B1)(fb2 : A2 -> B2)
+    (fc1 : A1 -> B1)(fc2 : A2 -> B2),
+    (forall a, fb1 (conva a) = convb (fb2 a)) ->
+    (forall a, fc1 (conva a) = convb (fc2 a)) ->
+    (forall a, (f1 (conva a)) = conva (f2 a)) ->
+    forall n a1 a2,
+    a1 = (conva a2) ->
+    List.Forall2 (fun b1 b2 => b1 = convb b2)
+    (scanl_fix f1 fb1 fc1 n a1)
+    (scanl_fix f2 fb2 fc2 n a2).
+
+    induction n; intros; simpl in *; subst.
+    econstructor.
+
+    destruct n.
+    econstructor.
+    eauto.
+    econstructor.
+    eauto.
+    econstructor.
+
+    econstructor.
+    eauto.
+    eapply IHn.
+    eauto.
+
+  Qed.
+
+  Theorem fiat_mul_scalar_rwnaf_odd_loop_body_gen_equiv : forall wsize z,
+    recode_rwnaf_odd_scanl_fix_body wsize (sbvToInt _ z) =
+    (sbvToInt _ 
+          (fst (fiat_mul_scalar_rwnaf_odd_loop_body_gen wsize z)),
+    sbvToInt _ 
+         (snd (fiat_mul_scalar_rwnaf_odd_loop_body_gen wsize z))).
+
+  Admitted.
+
+  Theorem fiat_mul_scalar_rwnaf_odd_gen_equiv : forall pred_numWindows wsize z,
+    List.Forall2 (fun (x : Z) (y : bitvector 16) => x = (sbvToInt _ y))
+  (recode_rwnaf_odd wsize (S pred_numWindows) (sbvToInt _ z))
+  (fiat_mul_scalar_rwnaf_odd_gen wsize pred_numWindows z).
+
+    intros.
+    rewrite recode_rwnaf_odd_scanl_equiv.
+    unfold fiat_mul_scalar_rwnaf_odd_gen.
+    
+    rewrite (@scanl_fix_equiv (bitvector 16 * bitvector 384) _ _ _
+      (fun p =>
+         fiat_mul_scalar_rwnaf_odd_loop_body_gen wsize (snd p))
+      _
+      pred_numWindows
+      (fun (p : bitvector 16 * bitvector 384) => fst p) (fun p => drop _ 368 16 (snd p))).
+
+    eapply (@scanl_fix_convert _ _ _ _ 
+      (fun p => (sbvToInt _ (fst p), sbvToInt _ (snd p)))
+      (sbvToInt _)
+    ); intros.
+
+    trivial.
+    simpl.
+    (* not right, but putting modulo back in model may fix it *)
+    admit.
+    apply fiat_mul_scalar_rwnaf_odd_loop_body_gen_equiv.
+    apply fiat_mul_scalar_rwnaf_odd_loop_body_gen_equiv.
+
+    off by 1 somewhere
+    apply toN_int_length.
+    
   Qed.
 
   Theorem fiat_mul_scalar_rwnaf_gen_equiv : forall pred_numWindows wsize n,
