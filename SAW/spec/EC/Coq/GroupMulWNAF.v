@@ -969,9 +969,12 @@ Section GroupMulWNAF.
   Definition twoToWsize := Z.shiftl 1 (Z.of_nat wsize).
   Definition wsize_mask := Z.sub (Z.shiftl twoToWsize 1) 1.
 
+  Variable finalBitLength : nat.
+  Hypothesis finalBitLength_large : (wsize <= finalBitLength)%nat.
+
   Fixpoint recode_rwnaf_odd (nw : nat)(n : Z) :=
     match nw with
-    | 0%nat => (n mod twoToWsize) :: nil
+    | 0%nat => (n mod (Z.shiftl 1 (Z.of_nat finalBitLength))) :: nil
     | S nw' =>
       let k_i := (n mod (Z.double twoToWsize)) - twoToWsize in
       let n' := (n - k_i) / twoToWsize in
@@ -1222,7 +1225,7 @@ Section GroupMulWNAF.
     z < (Z.shiftl 1 (Z.of_nat ((S nw) * wsize))) ->
     RegularReprOfOddZ (recode_rwnaf_odd nw z) z.
 
-    induction nw; intuition; simpl in *.
+    induction nw; intuition idtac; simpl in *.
 
     assert (twoToWsize >  0).
     eapply shiftl_pos.
@@ -1238,27 +1241,56 @@ Section GroupMulWNAF.
     rewrite Zdiv.Zodd_mod in H.
     apply Zbool.Zeq_is_eq_bool in H.
     trivial.
+    apply Z.gt_lt.
+    apply shiftl_pos.
     lia.
+    lia.   
+
     lia.
-    unfold twoToWsize.
     rewrite Z.shiftl_mul_pow2.
     rewrite Z.mul_1_l.
     apply pow_mod_0; intuition.
     lia.
+
+    lia.
  
     (* prove that window is small *)
     rewrite Z.abs_eq.
-    apply Zdiv.Z_mod_lt.
+    rewrite Z.mod_small.
+    rewrite plus_0_r in *.
+    trivial.
+    intuition idtac.
+    eapply Z.lt_le_trans.
+    eauto.
+    rewrite plus_0_r.
+    repeat rewrite Z.shiftl_mul_pow2.
+    apply Z.mul_le_mono_nonneg_l.
+    lia.
+    apply Z.pow_le_mono_r.
+    lia.
+    lia.
+    lia.
+    lia.
+    apply Z.mod_pos_bound.
+    apply Z.gt_lt.
     apply shiftl_pos.
     lia.
     lia.
-    eapply Zdiv.Z_mod_lt. trivial.
 
     rewrite zDouble_n_id.
     rewrite Z.add_0_r.
     rewrite Nat.add_0_r in *.
     apply Z.mod_small; intuition.
-
+    eapply Z.lt_le_trans; eauto.
+    repeat rewrite Z.shiftl_mul_pow2.
+    apply Z.mul_le_mono_nonneg_l.
+    lia.
+    apply Z.pow_le_mono_r.
+    lia.
+    lia.
+    lia.
+    lia.
+    
     assert (twoToWsize >  0).
     apply shiftl_pos. lia. lia.
 
@@ -1285,7 +1317,7 @@ Section GroupMulWNAF.
 
     assert (0 <= (z - (z mod Z.double twoToWsize - twoToWsize)) / twoToWsize).
     apply Zdiv.Z_div_pos.
-    trivial.
+    lia.
     rewrite Z.sub_sub_distr.
     apply Z.add_nonneg_nonneg.
     apply Z.le_0_sub.
@@ -1332,7 +1364,8 @@ Section GroupMulWNAF.
     lia.
     lia.
 
-    specialize (IHnw ((z - (z mod Z.double twoToWsize - twoToWsize)) / twoToWsize)); intuition.
+    specialize (IHnw ((z - (z mod Z.double twoToWsize - twoToWsize)) / twoToWsize)); intuition idtac. 
+ 
     unfold RegularReprOfOddZ, RegularWindows in *; simpl in *; intuition; subst.
     unfold OddWindow.
     rewrite Zdiv.Zodd_mod.
@@ -1992,17 +2025,19 @@ Section GroupMulWNAF.
   Variable numWindows : nat.
   Hypothesis numWindows_nz : numWindows <> 0%nat.
 
-  Definition groupMul_signedRegular_table p n := 
-    groupMul_signedRegular p (groupMul_signed_table (preCompTable p)) numWindows n.
+  Definition groupMul_signedRegular_table p m n := 
+    groupMul_signedRegular p (groupMul_signed_table (preCompTable p)) m numWindows n.
 
-  Theorem groupMul_signedRegular_table_correct : forall p n,
+  Theorem groupMul_signedRegular_table_correct : forall p m n,
+    (wsize <= m)%nat ->
     Z.of_nat n < Z.shiftl 1 (Z.of_nat (numWindows * wsize)) ->
-    groupMul_signedRegular_table p n == groupMul n p.
+    groupMul_signedRegular_table p m n == groupMul n p.
 
     intros.
     eapply groupMul_signedRegular_correct; intros.
     eapply signedMul_table_correct; trivial.
     apply preCompTable_correct.
+    trivial.
     trivial.
     trivial.
 

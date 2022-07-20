@@ -779,10 +779,16 @@ Section ECEqProof.
 
   Admitted.
 
-  Theorem fiat_mul_scalar_rwnaf_odd_gen_equiv : forall pred_numWindows wsize z,
+  Theorem mod_drop_equiv : forall s1 m a,
+    (Z.modulo (sbvToInt _ a) (Z.shiftl 1 (Z.of_nat m))) =
+    (sbvToInt _ (drop Bool s1 m a)).
+ 
+  Admitted.
+
+  Theorem fiat_mul_scalar_rwnaf_odd_gen_equiv : forall nw wsize z,
     List.Forall2 (fun (x : Z) (y : bitvector 16) => x = (sbvToInt _ y))
-  (recode_rwnaf_odd wsize (S pred_numWindows) (sbvToInt _ z))
-  (fiat_mul_scalar_rwnaf_odd_gen wsize pred_numWindows z).
+  (recode_rwnaf_odd wsize 16 (S (S nw)) (sbvToInt _ z))
+  (fiat_mul_scalar_rwnaf_odd_gen wsize nw z).
 
     intros.
     rewrite recode_rwnaf_odd_scanl_equiv.
@@ -792,7 +798,7 @@ Section ECEqProof.
       (fun p =>
          fiat_mul_scalar_rwnaf_odd_loop_body_gen wsize (snd p))
       _
-      pred_numWindows
+      (S nw)
       (fun (p : bitvector 16 * bitvector 384) => fst p) (fun p => drop _ 368 16 (snd p))).
 
     eapply (@scanl_fix_convert _ _ _ _ 
@@ -801,21 +807,19 @@ Section ECEqProof.
     ); intros.
 
     trivial.
-    simpl.
-    (* not right, but putting modulo back in model may fix it *)
-    admit.
+    rewrite <- mod_drop_equiv.
+    reflexivity.
     apply fiat_mul_scalar_rwnaf_odd_loop_body_gen_equiv.
     apply fiat_mul_scalar_rwnaf_odd_loop_body_gen_equiv.
 
-    off by 1 somewhere
     apply toN_int_length.
     
   Qed.
 
-  Theorem fiat_mul_scalar_rwnaf_gen_equiv : forall pred_numWindows wsize n,
+  Theorem fiat_mul_scalar_rwnaf_gen_equiv : forall nw wsize z,
     List.Forall2 (fun x (y : bitvector 16) => x = (sbvToInt _ y))
-    (recode_rwnaf wsize (S pred_numWindows) (unsignedToNat n)) 
-    (seqToList (fiat_mul_scalar_rwnaf_gen pred_numWindows wsize n)).
+    (recode_rwnaf wsize 16 (S (S nw)) (sbvToInt _ z)) 
+    (fiat_mul_scalar_rwnaf_gen wsize nw z).
 
     intros. 
     unfold recode_rwnaf, fiat_mul_scalar_rwnaf_gen.
