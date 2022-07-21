@@ -1450,8 +1450,8 @@ Section GroupMulWNAF.
   Variable numWindows : nat.
   Hypothesis numWindows_nz : numWindows <> 0%nat.
 
-  Definition recode_rwnaf (n : nat) :=
-    recode_rwnaf_odd (pred numWindows) (Z.lor (Z.of_nat n) 1).
+  Definition recode_rwnaf z :=
+    recode_rwnaf_odd (pred numWindows) (Z.lor z 1).
 
   Theorem RegularReprOfZ_odd : forall ws z,
     Z.odd z = true ->
@@ -1558,7 +1558,7 @@ Section GroupMulWNAF.
 
   Theorem recode_rwnaf_correct : forall n,
     (Z.of_nat n) < (Z.shiftl 1 (Z.of_nat (numWindows * wsize))) ->
-    RegularReprOfNat (recode_rwnaf n) n.
+    RegularReprOfNat (recode_rwnaf (Z.of_nat n)) n.
 
     intuition.
     unfold recode_rwnaf.
@@ -1599,7 +1599,7 @@ Section GroupMulWNAF.
   Qed.
 
   Definition groupMul_signedRegular n :=
-    groupMul_signedRegularWindows (even n) (recode_rwnaf n).
+    groupMul_signedRegularWindows (even n) (recode_rwnaf (Z.of_nat n)).
 
   Theorem groupMul_signedRegular_correct : forall n,
     Z.of_nat n < Z.shiftl 1 (Z.of_nat (numWindows * wsize)) ->

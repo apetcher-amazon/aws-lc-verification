@@ -745,9 +745,10 @@ Section ECEqProof.
     (fb1 : A1 -> B1)(fb2 : A2 -> B2)
     (fc1 : A1 -> B1)(fc2 : A2 -> B2),
     (forall a, fb1 (conva a) = convb (fb2 a)) ->
-    (forall a, fc1 (conva a) = convb (fc2 a)) ->
-    (forall a, (f1 (conva a)) = conva (f2 a)) ->
+    (forall a, (exists b, a = (f2 b)) -> fc1 (conva a) = convb (fc2 a)) ->
+    (forall a, (exists b, a = (f2 b)) -> f1 (conva a) = conva (f2 a)) ->
     forall n a1 a2,
+    (exists b, a2 = (f2 b)) ->
     a1 = (conva a2) ->
     List.Forall2 (fun b1 b2 => b1 = convb b2)
     (scanl_fix f1 fb1 fc1 n a1)
@@ -767,27 +768,65 @@ Section ECEqProof.
     eauto.
     eapply IHn.
     eauto.
+    eauto.
 
   Qed.
 
   Theorem fiat_mul_scalar_rwnaf_odd_loop_body_gen_equiv : forall wsize z,
-    recode_rwnaf_odd_scanl_fix_body wsize (sbvToInt _ z) =
+    recode_rwnaf_odd_scanl_fix_body wsize (bvToInt _ z) =
     (sbvToInt _ 
           (fst (fiat_mul_scalar_rwnaf_odd_loop_body_gen wsize z)),
     sbvToInt _ 
          (snd (fiat_mul_scalar_rwnaf_odd_loop_body_gen wsize z))).
 
+    intros.
+    
+
   Admitted.
 
   Theorem mod_drop_equiv : forall s1 m a,
-    (Z.modulo (sbvToInt _ a) (Z.shiftl 1 (Z.of_nat m))) =
-    (sbvToInt _ (drop Bool s1 m a)).
+    (Z.modulo (bvToInt _ a) (Z.shiftl 1 (Z.of_nat m))) =
+    (bvToInt _ (drop Bool s1 m a)).
  
+    intros.
+    
+
   Admitted.
+
+
+  Theorem bvToInt_sbvToInt_equiv : forall n v,
+    VectorDef.hd v = false ->
+    (sbvToInt (S n) v = bvToInt (S n) v).
+
+    intros.
+    unfold sbvToInt, bvToInt, spec.toZ, spec.toPosZ.
+    case_eq (spec.splitmsb (bvToBITS v)); intros.
+    destruct b0.
+
+  Admitted.
+
+  Theorem shiftR_bvToInt_nonneg : 
+    forall n s x,
+    s > 0 ->
+    (VectorDef.hd (shiftR (S n) bool false x s) = false).
+
+  Admitted.
+
+  Theorem fiat_mul_scalar_rwnaf_odd_loop_body_gen_snd_nonneg : 
+    forall wsize x, 
+     (VectorDef.hd (snd (fiat_mul_scalar_rwnaf_odd_loop_body_gen wsize x)) = false).
+
+    intros.
+    unfold fiat_mul_scalar_rwnaf_odd_loop_body_gen.
+    unfold snd, Datatypes.snd.
+    apply shiftR_bvToInt_nonneg.
+    lia.
+
+  Qed.
 
   Theorem fiat_mul_scalar_rwnaf_odd_gen_equiv : forall nw wsize z,
     List.Forall2 (fun (x : Z) (y : bitvector 16) => x = (sbvToInt _ y))
-  (recode_rwnaf_odd wsize 16 (S (S nw)) (sbvToInt _ z))
+  (recode_rwnaf_odd wsize 16 (S (S nw)) (bvToInt _ z))
   (fiat_mul_scalar_rwnaf_odd_gen wsize nw z).
 
     intros.
@@ -807,25 +846,48 @@ Section ECEqProof.
     ); intros.
 
     trivial.
+
+    Here!
+    It's not enough for the snd value to be non-negative
+    We need that the last value fits in 16 bits
+    Maybe the right approach is to make a refined model that uses bit strings
+    Then we can prove all the necessary facts there, and this equivalence will be trivial. 
+
+
     rewrite <- mod_drop_equiv.
     reflexivity.
+    (* We have an invariant that the second values are non-negative *)
+    replace (sbvToInt 384 (snd a0)) with (bvToInt 384 (snd a0)).
     apply fiat_mul_scalar_rwnaf_odd_loop_body_gen_equiv.
+    symmetry.
+    apply bvToInt_sbvToInt_equiv.
+    destruct H. rewrite H.
+    apply fiat_mul_scalar_rwnaf_odd_loop_body_gen_snd_nonneg.
+    exists (bvNat _ O, z).
+    trivial.
     apply fiat_mul_scalar_rwnaf_odd_loop_body_gen_equiv.
 
     apply toN_int_length.
     
   Qed.
 
+  Theorem bvOr_bvToInt_equiv : forall n x y,
+    bvToInt n (bvOr n x y) =
+    BinInt.Z.lor (bvToInt n x) (bvToInt n y).
+  Admitted.
+
   Theorem fiat_mul_scalar_rwnaf_gen_equiv : forall nw wsize z,
     List.Forall2 (fun x (y : bitvector 16) => x = (sbvToInt _ y))
-    (recode_rwnaf wsize 16 (S (S nw)) (sbvToInt _ z)) 
+    (recode_rwnaf wsize 16 (S (S (S nw))) (bvToInt _ z)) 
     (fiat_mul_scalar_rwnaf_gen wsize nw z).
 
     intros. 
     unfold recode_rwnaf, fiat_mul_scalar_rwnaf_gen.
-    rewrite scanl_pair_eq.
-    simpl.
-    rewrite gen_nat_seq_eq.
+    replace (BinInt.Z.lor (bvToInt 384 z) 1) with
+      (bvToInt _ (bvOr 384 z (intToBv 384 1))).
+    apply fiat_mul_scalar_rwnaf_odd_gen_equiv.
+    rewrite bvOr_bvToInt_equiv.
+    reflexivity.
     
   Qed.
 
