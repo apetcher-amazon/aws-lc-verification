@@ -5,6 +5,7 @@
 
 -Q "" Top
 
+Zfacts.v
 GroupMulWNAF.v
 EC_fiat_primitives.v
 EC_fiat_P384_7.v

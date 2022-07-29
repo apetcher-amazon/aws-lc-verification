@@ -13,6 +13,8 @@ Require Import micromega.Lia.
 Require Import ZArith.BinInt.
 Require Import SetoidClass.
 
+From Top Require Import Zfacts.
+
 Section GroupMulWNAF.
 
   Variable GroupElem : Type.
@@ -355,7 +357,7 @@ Section GroupMulWNAF.
     Z.of_nat n = 0 ->
     n = 0%nat.
 
-    intuition.
+    intuition idtac.
     destruct n; simpl in *; trivial.
     discriminate.
 
@@ -591,7 +593,7 @@ Section GroupMulWNAF.
   Theorem Z_double_sum : forall z,
     Z.double z = z + z.
 
-    intuition.
+    intuition idtac.
     rewrite Z.double_spec.
     rewrite <- Z.add_diag.
     reflexivity.
@@ -969,12 +971,10 @@ Section GroupMulWNAF.
   Definition twoToWsize := Z.shiftl 1 (Z.of_nat wsize).
   Definition wsize_mask := Z.sub (Z.shiftl twoToWsize 1) 1.
 
-  Variable finalBitLength : nat.
-  Hypothesis finalBitLength_large : (wsize <= finalBitLength)%nat.
 
   Fixpoint recode_rwnaf_odd (nw : nat)(n : Z) :=
     match nw with
-    | 0%nat => (n mod (Z.shiftl 1 (Z.of_nat finalBitLength))) :: nil
+    | 0%nat => n :: nil
     | S nw' =>
       let k_i := (n mod (Z.double twoToWsize)) - twoToWsize in
       let n' := (n - k_i) / twoToWsize in
@@ -1102,12 +1102,12 @@ Section GroupMulWNAF.
     n <> 0%nat ->
     zDouble_n n z / (Z.shiftl 1 (Z.of_nat n)) = z.
 
-    intuition.
+    intuition idtac.
 
     assert (Z.of_nat n > 0).
     assert (0 <= Z.of_nat n) by apply Zorder.Zle_0_nat.
     assert (0 <> Z.of_nat n).
-    intuition.
+    intuition idtac.
     apply H.
     apply Z_of_nat_0_if.
     lia.
@@ -1237,60 +1237,16 @@ Section GroupMulWNAF.
     rewrite Zdiv.Zodd_mod.
     intuition.
     apply Zbool.Zeq_is_eq_bool.
-    rewrite Zmod_mod_gen.
     rewrite Zdiv.Zodd_mod in H.
     apply Zbool.Zeq_is_eq_bool in H.
     trivial.
-    apply Z.gt_lt.
-    apply shiftl_pos.
-    lia.
-    lia.   
-
-    lia.
-    rewrite Z.shiftl_mul_pow2.
-    rewrite Z.mul_1_l.
-    apply pow_mod_0; intuition.
-    lia.
-
+    rewrite Z.abs_eq.
+    rewrite plus_0_r in H1.
+    trivial.
+    trivial.
+    rewrite zDouble_n_id.
     lia.
  
-    (* prove that window is small *)
-    rewrite Z.abs_eq.
-    rewrite Z.mod_small.
-    rewrite plus_0_r in *.
-    trivial.
-    intuition idtac.
-    eapply Z.lt_le_trans.
-    eauto.
-    rewrite plus_0_r.
-    repeat rewrite Z.shiftl_mul_pow2.
-    apply Z.mul_le_mono_nonneg_l.
-    lia.
-    apply Z.pow_le_mono_r.
-    lia.
-    lia.
-    lia.
-    lia.
-    apply Z.mod_pos_bound.
-    apply Z.gt_lt.
-    apply shiftl_pos.
-    lia.
-    lia.
-
-    rewrite zDouble_n_id.
-    rewrite Z.add_0_r.
-    rewrite Nat.add_0_r in *.
-    apply Z.mod_small; intuition.
-    eapply Z.lt_le_trans; eauto.
-    repeat rewrite Z.shiftl_mul_pow2.
-    apply Z.mul_le_mono_nonneg_l.
-    lia.
-    apply Z.pow_le_mono_r.
-    lia.
-    lia.
-    lia.
-    lia.
-    
     assert (twoToWsize >  0).
     apply shiftl_pos. lia. lia.
 
@@ -1308,7 +1264,7 @@ Section GroupMulWNAF.
     rewrite Z.mod_small.  
     apply Zdiv.Z_div_same.
     trivial.
-    intuition.
+    intuition idtac.
     lia.
     lia.
     lia.
@@ -1475,87 +1431,6 @@ Section GroupMulWNAF.
 
   Qed.
 
-
-  Theorem Z_odd_lor_1 : forall z,
-    Z.odd z = true ->
-    Z.lor z 1 = z.
-
-    intros.
-    eapply Z.bits_inj_iff'; intros.
-    replace 1 with (2^0).
-    rewrite <- Z.setbit_spec'.
-    rewrite Z.setbit_eqb; try lia.
-    case_eq (Z.eqb 0 n); intros; simpl; trivial.
-    rewrite Z.eqb_eq in H1; subst.
-    rewrite Z.bit0_odd. congruence.
-    trivial.
-
-  Qed.
-
-  Theorem even_prod_2 : forall x,
-    Z.even x = true ->
-    exists y, x = 2 * y.
-
-    intros.
-    apply Z.even_spec in H.
-    apply H.
-
-  Qed.
-
-  Theorem Z_even_lor_1 : forall z,
-    Z.even z = true ->
-    Z.lor z 1 = Z.succ z.
-
-    intros.
-    replace 1 with (2^0).
-    rewrite <- Z.setbit_spec'.
-    eapply Z.bits_inj_iff'; intros.
-    rewrite Z.setbit_eqb; try lia.
-    case_eq (Z.eqb 0 n); intros; simpl; trivial.
-    rewrite Z.eqb_eq in H1; subst.
-    rewrite Z.bit0_odd. 
-    rewrite Z.odd_succ.
-    congruence.
-    destruct (even_prod_2 z); trivial; subst.
-
-    rewrite Z.eqb_neq in H1.
-    replace n with (Z.succ (Z.pred n)); try lia.
-    rewrite Z.testbit_even_succ; trivial.
-    rewrite <- Z.add_1_r.
-    rewrite Z.testbit_odd_succ.
-    reflexivity.
-    lia.
-    lia.
-    trivial.
-
-  Qed.
-
-  Theorem Z_even_lt : forall z1 z2,
-    Z.even z1 = true ->
-    Z.even z2 = true ->
-    z1 < z2 ->
-    (Z.succ z1) < z2.
-
-    intros.
-    assert (Z.succ z1 <> z2).
-    rewrite <- Z_even_lor_1; trivial.
-    intuition.
-    rewrite <- Z.bits_inj_iff' in H2.
-    specialize (H2 0); intuition.
-    assert (0 <= 0) by lia; intuition.
-    replace 1 with (Z.pow 2 0) in H4; trivial.
-    rewrite <- Z.setbit_spec' in H4.
-    rewrite Z.setbit_eq in H4; try lia.
-    rewrite Z.bit0_odd in H4.
-    rewrite <- Z.negb_even in H4.
-    rewrite H0 in H4.
-    simpl in *.
-    discriminate.
-
-    lia.
-  
-  Qed.
-
   Theorem recode_rwnaf_correct : forall n,
     (Z.of_nat n) < (Z.shiftl 1 (Z.of_nat (numWindows * wsize))) ->
     RegularReprOfNat (recode_rwnaf (Z.of_nat n)) n.
@@ -1714,7 +1589,7 @@ Section GroupMulWNAF.
     simpl in *.
     assert ( 1 <> 0)%nat by lia.
     assert (tableSize <> O).
-    intuition.
+    intuition idtac.
     eapply H0.
     eapply Nat.shiftl_eq_0_iff.
     eauto.
@@ -2025,19 +1900,17 @@ Section GroupMulWNAF.
   Variable numWindows : nat.
   Hypothesis numWindows_nz : numWindows <> 0%nat.
 
-  Definition groupMul_signedRegular_table p m n := 
-    groupMul_signedRegular p (groupMul_signed_table (preCompTable p)) m numWindows n.
+  Definition groupMul_signedRegular_table p n := 
+    groupMul_signedRegular p (groupMul_signed_table (preCompTable p)) numWindows n.
 
-  Theorem groupMul_signedRegular_table_correct : forall p m n,
-    (wsize <= m)%nat ->
+  Theorem groupMul_signedRegular_table_correct : forall p n,
     Z.of_nat n < Z.shiftl 1 (Z.of_nat (numWindows * wsize)) ->
-    groupMul_signedRegular_table p m n == groupMul n p.
+    groupMul_signedRegular_table p n == groupMul n p.
 
     intros.
     eapply groupMul_signedRegular_correct; intros.
     eapply signedMul_table_correct; trivial.
     apply preCompTable_correct.
-    trivial.
     trivial.
     trivial.
 
