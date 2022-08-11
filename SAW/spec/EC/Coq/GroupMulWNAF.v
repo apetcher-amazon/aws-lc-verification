@@ -406,8 +406,56 @@ Section GroupMulWNAF.
   Fixpoint groupMul_signedWindows (ws : list SignedWindow) :=
     match ws with
     | nil => idElem
-    | w :: ws' => (groupAdd_signedWindow w (groupDouble_n wsize (groupMul_signedWindows ws')))
+    | w :: ws' => 
+      (groupAdd_signedWindow w 
+        (groupDouble_n wsize (groupMul_signedWindows ws')))
     end.
+
+
+  (* a form of the group multiplication using fold that looks more like the implementation. *)
+  Fixpoint groupMul_signedWindows_h e (ws : list SignedWindow) :=
+    match ws with
+    | nil => e
+    | w :: ws' => 
+      (groupAdd_signedWindow w 
+        (groupDouble_n wsize (groupMul_signedWindows_h e ws')))
+    end.
+
+  Definition groupMul_signedWindows_fold_body p w :=
+    (groupAdd_signedWindow w (groupDouble_n wsize p)).
+
+  Theorem groupMul_signedWindows_h_fold_equiv : forall ws e,
+    (groupMul_signedWindows_h e ws) = (fold_left groupMul_signedWindows_fold_body (rev ws) e).
+
+    induction ws; intuition idtac; simpl.
+    rewrite fold_left_app.
+    simpl.
+    unfold groupMul_signedWindows_fold_body.
+    f_equal.
+    f_equal.
+    apply IHws.
+  Qed.
+
+  Theorem groupMul_signedWindows_h_equiv : forall ws,
+    groupMul_signedWindows_h idElem ws = groupMul_signedWindows ws.
+
+    induction ws; intuition idtac; simpl in *.
+    rewrite IHws.
+    reflexivity.
+
+  Qed.
+
+  Theorem groupMul_signedWindows_fold_equiv : forall ws,
+    (groupMul_signedWindows ws) = (fold_left groupMul_signedWindows_fold_body (rev ws) idElem).
+
+    intros.
+    rewrite <- groupMul_signedWindows_h_fold_equiv.
+    rewrite groupMul_signedWindows_h_equiv.
+    reflexivity.
+  Qed.
+
+  (* end fold multiplication model *)
+
 
   Definition zDouble_n (times : nat) n : Z :=
     Z.shiftl n (Z.of_nat times).
@@ -968,6 +1016,63 @@ Section GroupMulWNAF.
     (windowsToZ ws) = z.
 
 
+  Theorem zDouble_n_le_mono_r : forall n x1 x2,
+    (0 <= n)%nat ->
+    x1 <= x2 ->
+    zDouble_n n x1 <= zDouble_n n x2.
+
+    intros. unfold zDouble_n.
+    repeat rewrite Z.shiftl_mul_pow2.
+    apply Z.mul_le_mono_nonneg_r.
+    apply Z.pow_nonneg; lia.
+    trivial.
+    lia.
+    lia.
+  Qed.
+
+  (* In any regular representation of a non-negative number, the last window is non-negative.
+    This fact is used by implementations to skip the sign check on the last window. *)
+  Theorem firstWindowNonneg : forall (ws : list Z)(z : Z),
+    RegularReprOfOddZ ws z ->
+    z >= 0 ->
+    (length ws > 0)%nat ->
+    hd 0 (rev ws) >= 0.
+
+    induction ws using rev_ind; intros; simpl in *.
+    lia.
+    rewrite rev_app_distr.
+    unfold RegularReprOfOddZ, RegularWindows in *; simpl in *; intuition idtac.
+    simpl in *.
+    rewrite windowsToZ_app in *.
+    destruct (ZArith_dec.Z_ge_lt_dec x 0); trivial.
+    exfalso.
+    
+    assert (Z.abs (windowsToZ ws) < zDouble_n (length ws * wsize) 1).
+    apply (@windowsToZ_bit_length_small ws).
+    intros.
+    apply H2.
+    apply in_or_app.
+    intuition idtac.
+
+    assert (z < 0).
+    rewrite <- H3.
+    eapply Z.lt_le_trans.
+    eapply Zorder.Zplus_lt_compat_r.
+    apply Z.abs_lt.
+    eauto.
+    assert (x <= -1) by lia.
+    eapply Z.le_trans.
+    eapply Zorder.Zplus_le_compat_l.
+    eapply zDouble_n_le_mono_r.
+    lia.
+    eauto.
+    rewrite <- (@zDouble_n_opp _ 1).
+    rewrite Z.add_opp_diag_r.
+    lia.
+    lia.
+
+  Qed.
+
   Definition twoToWsize := Z.shiftl 1 (Z.of_nat wsize).
   Definition wsize_mask := Z.sub (Z.shiftl twoToWsize 1) 1.
 
@@ -1485,6 +1590,17 @@ Section GroupMulWNAF.
     apply groupMul_signedRegularWindows_correct.
     apply recode_rwnaf_correct.
     trivial.
+  Qed.
+
+  Theorem recode_rwnaf_last_nonneg : forall n,
+    Z.of_nat n < Z.shiftl 1 (Z.of_nat (numWindows * wsize)) ->
+    0 <= last (recode_rwnaf (Z.of_nat n)) 0.
+    
+    intros.
+    eapply RegularReprOfZ_highWindowNonNeg.
+    eapply recode_rwnaf_correct.
+    trivial.
+    lia.
   Qed.
 
   End SignedOddWindows.
