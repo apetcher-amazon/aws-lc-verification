@@ -35,6 +35,7 @@ From Top Require Import GroupMulWNAF.
 From Top Require Import Zfacts.
 From Top Require Import EC_fiat_P384_7.
 From Top Require Import EC_fiat_P384_gen.
+From Top Require Import CryptoToCoq_equiv.
 
 Set Implicit Arguments.
 
@@ -649,37 +650,6 @@ Section ECEqProof.
     
   Qed.
 
-(*
-  Theorem recode_rwnaf_odd_eq_fold_list : forall pred_numWindows wsize n,
-    (BinInt.Z.of_nat (unsignedToNat n) <
- BinInt.Z.shiftl 1 (BinInt.Z.of_nat ((S pred_numWindows) * wsize)))%Z ->
-    List.Forall2 (fun (x : Z) (y : bitvector 16) => x = spec.toZ (bvToBITS y))
-  (recode_rwnaf_odd wsize pred_numWindows
-     (BinInt.Z.lor (BinInt.Z.of_nat (unsignedToNat n)) 1))
-  (fold_list (fiat_mul_scalar_rwnaf_loop_body n)
-     (to_list
-        (gen pred_numWindows (bitvector 64)
-           (fun i : nat => intToBv 64 (Z.of_nat (addNat i 0%nat)))))
-     (append 8 8 Bool (intToBv 8 0)
-        (bvOr 8 (bvAnd 8 (drop Bool 376 8 n) (intToBv 8 255)) (intToBv 8 1)))).
-
-    induction pred_numWindows; intros.
-    simpl in *.
-    econstructor.
-    rewrite Z.mod_small.
-
-    (* This only works when window size is less than a byte *)
-    admit.
-    intuition.
-    (* non-negative *)
-    admit.
-    (* smaller than 2^wsize *)
-    admit.
-    econstructor.
-
-  Abort.
-*)
-
   Fixpoint bv64Nats_h n v :=
     match n with
     | 0 => List.nil
@@ -935,71 +905,6 @@ Section ECEqProof.
   Theorem bvToBITS_bitsToBv_id : forall n v,
     bvToBITS (@bitsToBv n v) = v.
   Admitted.
-
-(*
-  Theorem bvToInt_bvAdd_small_equiv : forall n v1 v2,
-    (* (sbvToInt _ v2 <= bvToInt _ v1)%Z -> *)
-    (0 <= (bvToInt _ v1) + (sbvToInt _ v2) < Z.pow 2 (Z.of_nat n))%Z->
-    (bvToInt n (bvAdd _ v1 v2)) =
-    ((bvToInt _ v1) + (sbvToInt _ v2))%Z.
-
-    induction v1; intros; simpl in *.
-    rewrite bvAdd_id_l.
-    admit.
-
-    Local Transparent bvAdd operations.adcB.
-    unfold bvAdd, addB, adcB.
-    simpl.
-    Search bvAdd.
-    Search Vector.t O.
-
-  Qed.
-  *)
-
-(*
-
-  Theorem toPosZ_addB_tuple_equiv: forall n v1 v2 i1 i2,
-    spec.toPosZ (addB (tuple.Tuple (n:=S n) (tval:=v1) i1) (tuple.Tuple (n:=S n) (tval:=v2) i2)) =
-    (spec.toPosZ (tuple.Tuple (n:=S n) (tval:=v1) i1) + spec.toZ (tuple.Tuple (n:=S n) (tval:=v2) i2))%Z.
-
-
-    induction n; intros.
-    admit.
-
-    destruct v1.
-    admit.
-    destruct v2.
-    admit.
-    simpl in *.
-
-    Local Transparent bvAdd operations.adcB.
-    unfold addB, adcB.
-    simpl.
-
-    unfold is_true, eqtype.eq_op in *.
-    simpl in *.
-    repeat rewrite ssrnat.eqn  in *.
-    Search ssrnat.eqn.
-    unfold ssrnat.eqn in *. simpl in *.
-
-  Qed.
-
-spec.toPosZ
-  (addB (tuple.Tuple (n:=S n) (tval:=tval) i) (tuple.Tuple (n:=S n) (tval:=tval0) i0)) =
-(spec.toPosZ (tuple.Tuple (n:=S n) (tval:=tval) i) +
- spec.toZ (tuple.Tuple (n:=S n) (tval:=tval0) i0))%Z
-*)
-(*
-  Theorem toPosZ_addB_equiv: forall n v1 v2,
-    (spec.toPosZ v1 + spec.toPosZ v2 < Z.pow 2 (Z.of_nat n))%Z ->
-    @spec.toPosZ (S n) (addB v1 v2) =
-    (spec.toPosZ v1 + spec.toPosZ v2)%Z.
-
-    intros.
-    
-
-  Qed.
-*)
 
   Theorem toZ_toPosZ_equiv : forall n (v : spec.BITS (S n)),
     (spec.toZ v mod 2 ^ Z.of_nat (S n) = spec.toPosZ v mod 2 ^ Z.of_nat (S n))%Z.
@@ -1849,7 +1754,7 @@ spec.toPosZ
 
   Theorem fold_left_scanl_equiv : forall (A B : Type) def (f : A -> B -> A) ls a,
     List.fold_left (fun x y => x ++ (f (List.last x def) y)::List.nil) ls [a] = 
-    EC_fiat_P384_gen.scanl f ls a.
+    CryptoToCoq_equiv.scanl f ls a.
 
     induction ls; intros; simpl in *; trivial.
     rewrite <- IHls.
@@ -1865,7 +1770,7 @@ spec.toPosZ
     List.Forall2 PB ls1 ls2 ->
     (forall a1 a2 b1 b2, PA a1 a2 -> PB b1 b2 -> PA (f1 a1 b1) (f2 a2 b2)) ->
     PA a1 a2 ->
-    List.Forall2 PA (EC_fiat_P384_gen.scanl f1 ls1 a1) (EC_fiat_P384_gen.scanl f2 ls2 a2).
+    List.Forall2 PA (CryptoToCoq_equiv.scanl f1 ls1 a1) (CryptoToCoq_equiv.scanl f2 ls2 a2).
 
     induction ls1; destruct ls2; simpl in *; intros.
     econstructor; eauto.
@@ -1938,11 +1843,11 @@ spec.toPosZ
     List.Forall2
   (fun (a0 : point) (b0 : seq 3 F) =>
    jac_eq (fromPoint a0) (seqToProd b0))
-  (EC_fiat_P384_gen.scanl
+  (CryptoToCoq_equiv.scanl
      (fun (a0 : Jacobian.point) (_ : nat) =>
       Jacobian.add (Jacobian.double p1) a0)
      ls1 p1)
-  (EC_fiat_P384_gen.scanl
+  (CryptoToCoq_equiv.scanl
      (fun (z : seq 3 (seq 6 (seq 64 Bool)))
         (_ : Integer) =>
       EC_fiat_P384_7.fiat_point_add Fsquare Fmul
