@@ -19,6 +19,7 @@ From CryptolToCoq Require Import SAWCorePrelude.
 Import SAWCorePrelude.
 
 From CryptolToCoq Require Import SAWCoreBitvectors.
+From CryptolToCoq Require Import Everything.
 
 Ltac ecSimpl_one :=
   match goal with
@@ -401,4 +402,375 @@ Theorem toList_drop_equiv : forall A (inh : Inhabited A) n1 n2 ls,
   to_list (drop A n1 n2 ls) = skipn n1 (to_list ls).
 
 Admitted.
+
+Theorem nth_order_S_cons : forall (A : Type) a n (v : Vec (S n) A) (pf : (S n < S (S n))%nat)(pf' : (n < S n)%nat),
+  nth_order (Vector.cons _ a _ v) pf = nth_order v pf'.
+
+  intros.
+  unfold nth_order.
+  simpl.
+  eapply Vector.eq_nth_iff; trivial.
+  apply Fin.of_nat_ext.
+Qed.
+
+Theorem ssr_addn_even : forall n1 n2,
+  even n1 = true ->
+  even n2 = true ->
+  even (ssrnat.addn n1 n2) = true.
+Admitted.
+
+Theorem ssr_double_even : forall n,
+  even (ssrnat.double n) = true.
+Admitted.
+
+Theorem nth_order_0_cons : forall (A : Type) a n (v : Vec n A) (pf : (0 < S n)%nat),
+  nth_order (Vector.cons _ a _ v) pf = a.
+
+  intros.
+  reflexivity.
+Qed.
+
+Theorem lsb_0_even_h : forall n (v : Vec n _) acc (pf : (pred n < n)%nat),
+  nth_order v pf = false -> 
+  even (Vector.fold_left bvToNatFolder acc v)  = true.
+
+  induction n; intros; simpl in *.
+  lia.
+
+  unfold bvToNat in *.
+  destruct (Vec_S_cons v).
+  destruct H0.
+  subst.
+  simpl.
+  destruct n.
+  rewrite nth_order_0_cons in H.
+  subst.
+  rewrite (@Vec_0_nil _ x0).
+  simpl.
+  unfold bvToNatFolder.
+  simpl.
+  (* double anything is even, 0 is even, even plus even is even*)
+  apply ssr_addn_even.
+  reflexivity.
+  apply ssr_double_even.
+
+  assert (n < S n)%nat by lia.
+  rewrite (@nth_order_S_cons _ _ _ _ _ H0) in H.
+  eapply IHn.
+  eauto.
+
+Qed.
+
+Theorem lsb_0_even : forall n (v : Vec n _) (pf : (pred n < n)%nat),
+  nth_order v pf = false -> 
+  even (bvToNat _ v) = true.
+
+  intros. 
+  eapply lsb_0_even_h; eauto.
+
+Qed.
+
+Theorem lsb_1_not_even_h : forall n (v : Vec n _) acc (pf : (pred n < n)%nat),
+  nth_order v pf = true -> 
+  even (Vector.fold_left bvToNatFolder acc v)  = false.
+
+  induction n; intros; simpl in *.
+  lia.
+
+  unfold bvToNat in *.
+  destruct (Vec_S_cons v).
+  destruct H0.
+  subst.
+  simpl.
+  destruct n.
+  rewrite nth_order_0_cons in H.
+  subst.
+  rewrite (@Vec_0_nil _ x0).
+  simpl.
+  case_eq (ssrnat.double acc); intros; trivial.
+  rewrite <- Nat.negb_odd.
+  rewrite <- Nat.even_succ.
+  rewrite <- H.
+  rewrite ssr_double_even.
+  reflexivity.
+
+  assert (n < S n)%nat by lia.
+  rewrite (@nth_order_S_cons _ _ _ _ _ H0) in H.
+  eapply IHn.
+  eauto.
+
+Qed.
+
+Theorem lsb_1_not_even : forall n (v : Vec n _) (pf : (pred n < n)%nat),
+  nth_order v pf = true -> 
+  even (bvToNat _ v) = false.
+
+  intros. 
+  eapply lsb_1_not_even_h; eauto.
+
+Qed.
+
+
+Theorem bvAnd_cons : forall n a1 a2 (v1 v2 : Vec n _),
+  bvAnd _ (Vector.cons _ a1 _ v1) (Vector.cons _ a2 _ v2) = 
+  Vector.cons _ (andb a1 a2) _ (bvAnd _ v1 v2).
+Admitted.
+
+Theorem addNat_equiv : forall n1 n2,
+  (n1 + n2)%nat = addNat n1 n2.
+
+  induction n1; intros; simpl in *; trivial.
+  rewrite IHn1.
+  reflexivity.
+Qed.
+
+Theorem drop_0_equiv : forall (A : Type)(inh : Inhabited A) n2 (v : Vector.t A (addNat O n2)),
+  drop _ O n2 v = v.
+
+Admitted.
+
+Theorem append_nil_eq : forall (A : Type)(inh : Inhabited A) n (v : Vec n A),
+  SAWCorePrelude.append _ _ _ (@Vector.nil A) v = v.
+
+Admitted.
+
+Theorem bvZipWith_cons : forall f n2 a b (v2a v2b : Vec n2 _),
+  bvZipWith f _ (Vector.cons _ a _ v2a) (Vector.cons _ b _ v2b) = 
+  Vector.cons _ (f a b) _ (bvZipWith f _ v2a v2b).
+
+  intros.
+  reflexivity.
+
+Qed.
+
+Local Arguments Vector.cons [_] h [_] t.
+Local Arguments append [m] [n] [a]%type_scope {Inh_a} x y.
+Local Arguments bvOr [n] _ _.
+Local Arguments bvAnd [n] _ _.
+Local Arguments reverse [n] [a]%type_scope {Inh_a} _.
+Local Arguments bvSub [n] _ _.
+Local Arguments SAWCorePrelude.map [a]%type_scope {Inh_a} [b]%type_scope f%function_scope _ _.
+
+
+
+Theorem bvZipWith_append : forall f n1 n2 (v1a v1b : Vec n1 _) (v2a v2b : Vec n2 _),
+  bvZipWith f _ (append v1a v2a) (append v1b v2b) = 
+  append (bvZipWith f _ v1a v1b) (bvZipWith f _ v2a v2b).
+
+  induction n1; intros; simpl in *.
+  rewrite (@Vec_0_nil _ v1a).
+  rewrite (@Vec_0_nil _ v1b).
+  repeat rewrite append_nil_eq.
+  reflexivity.
+
+  destruct (Vec_S_cons v1a).
+  destruct H.
+  destruct (Vec_S_cons v1b).
+  destruct H0.
+  subst.
+  repeat rewrite SAWCorePrelude_proofs.append_cons.
+  unfold Succ.
+  repeat rewrite bvZipWith_cons.
+  rewrite IHn1.
+  rewrite SAWCorePrelude_proofs.append_cons.
+  reflexivity.
+Qed.
+
+Theorem bvAnd_append : forall n1 n2 (v1a v1b : Vec n1 _) (v2a v2b : Vec n2 _),
+  bvAnd (append v1a v2a) (append v1b v2b) = 
+  append (bvAnd v1a v1b) (bvAnd v2a v2b).
+
+  intros.
+  apply bvZipWith_append.
+Qed.
+
+Theorem Vec_addNat_append : forall (A : Type)(inh : Inhabited A) n1 n2 (v : Vec (addNat n1 n2) A),
+  exists v1 v2,
+  v = append v1 v2.
+
+  induction n1; intros; simpl in *.
+  exists (@Vector.nil A).
+  exists v.
+  symmetry.
+  apply append_nil_eq.
+  destruct (Vec_S_cons v).
+  destruct H.
+  subst.
+  destruct (IHn1 _ x0).
+  destruct H.
+  subst.
+  exists (Vector.cons x x1).
+  exists x2.
+  rewrite SAWCorePrelude_proofs.append_cons.
+  reflexivity.
+
+Qed.
+
+Theorem drop_S_cons : forall (A : Type)(inh : Inhabited A) a n1 n2 (v : Vec (addNat n1 n2) A),
+  drop _ (S n1) n2 (Vector.cons a v) = drop _ n1 n2 v.
+
+  intros.
+  reflexivity.
+
+Qed.
+
+Theorem drop_append_eq : forall (A : Type)(inh : Inhabited A) n1 n2 (v1 : Vec n1 A)(v2 : Vec n2 A),
+  drop _ n1 n2 (append v1 v2) = v2.
+
+  induction n1; intros; simpl in *.
+  rewrite drop_0_equiv.
+  rewrite (@Vec_0_nil _ v1).
+  rewrite append_nil_eq.
+  reflexivity.
+  destruct (Vec_S_cons v1).
+  destruct H.
+  subst.
+  rewrite SAWCorePrelude_proofs.append_cons.
+  rewrite drop_S_cons.
+  eauto.  
+Qed.
+
+Theorem bvAnd_drop_equiv: forall n1 n2 v1 v2,
+  (bvAnd (drop _ n1 n2 v1) (drop _ n1 n2 v2)) = 
+  drop _ _ _ (bvAnd v1 v2).
+
+  intros.
+  destruct (Vec_addNat_append _ _ _ v1).
+  destruct H.
+  destruct (Vec_addNat_append _ _ _ v2).
+  destruct H0.
+  subst.
+  rewrite bvAnd_append.
+  repeat rewrite drop_append_eq.
+  reflexivity.
+
+Qed.
+
+Theorem intToBv_1_append_eq : forall n1 n2,
+  (n1 > 0)%nat ->
+  append (intToBv n2 0) (intToBv n1 1) = intToBv (addNat n2 n1) 1.
+Admitted.
+
+Theorem empty_Vec_eq : forall (A : Type)(v1 v2 : Vec O A),
+  v1 = v2.
+
+  intros.
+  rewrite (@Vec_0_nil _ v1).
+  rewrite (@Vec_0_nil _ v2).
+  reflexivity.
+Qed.
+
+Theorem bvAnd_lsb_drop_equiv: forall n1 n2 v,
+  (bvAnd (@drop _ _ n2 n1 v) (intToBv _ 1)) = 
+  drop _ _ _ (bvAnd v (intToBv _ 1)).
+
+  intros.
+  replace (intToBv n1 1) with (drop _ n2 n1 (append (intToBv n2 0) (intToBv n1 1))).
+  rewrite bvAnd_drop_equiv.
+  destruct n1.
+  apply empty_Vec_eq.
+  f_equal.
+  f_equal.
+  apply intToBv_1_append_eq.
+  lia.
+  rewrite drop_append_eq.
+  trivial.
+
+Qed.
+
+
+Theorem bvAnd_0 : forall n (v : Vec n _),
+  bvAnd v (intToBv n 0) = (intToBv n 0).
+Admitted.
+
+Theorem bvAnd_lsb_drop_append_equiv: forall n1 n2 v,
+  (n1 > 0)%nat ->
+  (bvAnd v (intToBv _ 1)) = 
+  (append (intToBv _ 0) (bvAnd (@drop _ _ n2 n1 v) (intToBv _ 1))).
+
+  intros.
+  destruct (Vec_addNat_append _ _ _ v).
+  destruct H0.
+  subst.
+  rewrite <- intToBv_1_append_eq; trivial.
+  rewrite bvAnd_append.
+  f_equal.
+  apply bvAnd_0.
+  rewrite drop_append_eq.
+  reflexivity.
+
+Qed.
+
+Theorem bvEq_append_same : forall n1 n2 (v1 : Vec n1 _) (v2a v2b : Vec n2 _),
+  bvEq _ (append v1 v2a) (append v1 v2b) = bvEq _ v2a v2b.
+
+Admitted.
+
+Theorem append_0_320_56 : forall n3 (v : Vec n3 _),
+  (append (intToBv 320%nat 0)
+       (append (intToBv 56%nat 0) v)) = append (intToBv 376%nat 0) v.
+
+Admitted.
+
+Theorem bvEq_nth_order : forall n (v1 v2 : Vec n _),
+  bvEq _ v1 v2 = true ->
+  forall n' (pf : (n' < n)%nat),
+  nth_order v1 pf = nth_order v2 pf.
+Admitted.
+
+Theorem nth_order_append_eq : forall (A : Type)(inh : Inhabited A) n1 (v1 : Vec n1 A) 
+  n2 (v2 : Vec n2 A)  n' (nlt2 : (addNat n' n2 < addNat n2 n1)%nat) (nlt1 : (n' < n1)%nat),
+  nth_order (append v2 v1) nlt2 = nth_order v1 nlt1.
+Admitted.
+
+Theorem nth_order_append_l_eq : forall (A : Type)(inh : Inhabited A) n1 (v1 : Vec n1 A) 
+  n2 (v2 : Vec n2 A)  n' (nlt2 : (n' < addNat n2 n1)%nat) (nlt1 : (n' < n2)%nat),
+  nth_order (append v2 v1) nlt2 = nth_order v2 nlt1.
+Admitted.
+
+Theorem nth_order_drop_eq : forall (A : Type)(inh : Inhabited A) n1 n2 (v : Vec (addNat n1 n2) A)
+  n' (lt1 : (addNat n1 n' < addNat n1 n2)%nat)(lt2 : (n' < n2)%nat),
+  nth_order (drop _ n1 n2 v) lt2 = nth_order v lt1.
+
+Admitted.
+
+Theorem nth_order_bvAnd_eq : forall n (v : Vec n _)(plt : (pred n < n)%nat),
+  nth_order (bvAnd v (intToBv n 1)) plt = nth_order v plt.
+Admitted.
+
+Theorem nth_order_bvAnd_l_eq : forall n (v : Vec n _) n' (plt : (n' < n)%nat),
+  (n' < pred n)%nat ->
+  nth_order (bvAnd v (intToBv n 1)) plt = false.
+Admitted.
+
+Theorem nth_order_ext : forall (A : Type) n1 n2 (v : Vec n1 A)(lt1 lt2 : (n2 < n1)%nat),
+  nth_order v lt1 = nth_order v lt2.
+
+  intros.
+  unfold nth_order.
+  f_equal.
+  apply Fin.of_nat_ext.
+Qed.
+
+Theorem nth_order_0 : forall n1 n2 (nlt : (n2 < n1)%nat),
+  nth_order (intToBv n1 0) nlt = false.
+Admitted.
+
+Theorem bvEq_false_ne : forall n (v1 v2 : Vec n _ ),
+  bvEq _ v1 v2 = false -> 
+  exists n' (nlt : (n' < n)%nat),
+  nth_order v1 nlt <> nth_order v2 nlt.
+
+Admitted.
+
+Theorem ne_false_impl_true : forall a,
+  a <> false ->   
+  a = true.
+
+  intros.
+  destruct a; trivial.
+  intuition idtac.
+
+Qed.
+
 

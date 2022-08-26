@@ -28,6 +28,8 @@ From CryptolToCoq Require Import SAWCorePrelude.
 Import SAWCorePrelude.
 
 From CryptolToCoq Require Import SAWCoreBitvectors.
+From CryptolToCoq Require Import Everything.
+
 
 From Top Require Import CryptoToCoq_equiv.
 From Top Require Import EC_fiat_P384_7.
@@ -228,6 +230,8 @@ Theorem fiat_select_point_ct_gen_equiv : forall x t,
   apply (@ecFromTo_0_n_bv_excl_equiv 64%nat 63%nat).
 Qed.
 
+Require Import Coq.Logic.EqdepFacts.
+
 Section PointMul.
 
   Definition felem := Vector.t (bitvector 64) 6.
@@ -270,17 +274,67 @@ Section PointMul.
     apply sawAt_3_equiv.
 
     (* contradiction *)
-    admit.
-
+    assert (pred 384 < 384)%nat by lia.
+    erewrite (lsb_0_even _ H1) in H0.
+    discriminate.
+    eapply bvEq_nth_order in H.
+    erewrite (@nth_order_append_eq _ _ 8%nat _ 56%nat) in H.
+    erewrite nth_order_bvAnd_eq in H.
+    erewrite nth_order_drop_eq in H.
+    rewrite H.
+    apply nth_order_0.
+ 
     case_eq (even (bvToNat 384%nat n)); intros.
     (* contradiction *)
-    admit.
+    simpl in *.
+    unfold ecEq, ecAnd, ecZero, byte_to_limb in H. simpl in H.
+    assert (pred 384 < 384)%nat by lia.
+    erewrite (lsb_1_not_even _ H1) in H0.
+    discriminate.
+    apply bvEq_false_ne in H.
+    destruct H.
+    destruct H.
+    rewrite nth_order_0 in H.
+    destruct (lt_dec x 56).
+    erewrite (@nth_order_append_l_eq _ _ 8%nat _ 56%nat) in H.
+    rewrite nth_order_0 in H.
+    intuition idtac.
+    assert (exists x', x = addNat x' 56)%nat.
+    exists (x - 56)%nat.
+    rewrite <- addNat_equiv.
+    lia.
+    destruct H2.
+    subst.
+
+    assert (x1 < 8)%nat.
+    clear H.
+    rewrite <- addNat_equiv in x0.
+    lia.
+    erewrite (@nth_order_append_eq _ _ 8%nat _ 56%nat _ _ _ H2) in H. 
+    destruct (lt_dec x1 7)%nat. 
+    erewrite nth_order_bvAnd_l_eq in H.
+    intuition idtac.
+    trivial.
+    assert (x1 = (pred 8))%nat.
+    rewrite <- addNat_equiv in x0.
+    lia.
+    subst.
+    erewrite nth_order_bvAnd_eq in H.
+    erewrite nth_order_drop_eq in H.
+    apply ne_false_impl_true.
+    eauto.
 
     (* both odd. *)
-    unfold of_list. 
+    unfold of_list.
     apply sawAt_3_equiv.
 
-  Admitted.
+    Unshelve.
+    rewrite <- addNat_equiv.
+    lia.
+    lia.
+    trivial.
+
+  Qed.
 
   Definition fiat_pre_comp_table := fiat_pre_comp_table field_square field_mul field_sub field_add .
 
@@ -304,7 +358,6 @@ Section PointMul.
     removeCoerce.
     removeCoerce.
     rewrite toList_scanl_equiv.
-    Check ecFromTo_m_n_equiv.
     replace (map (BinIntDef.Z.add (BinIntDef.Z.of_nat 1)) (toN_int 62))
       with (to_list (ecFromTo (TCNum 1%nat) (TCNum 63%nat) Integer PLiteralInteger)).
     reflexivity.
