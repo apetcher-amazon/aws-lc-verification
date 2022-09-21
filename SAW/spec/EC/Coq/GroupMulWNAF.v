@@ -1613,6 +1613,14 @@ Section GroupMulWNAF.
       | S n' => n' :: (forNats n')
     end.
 
+  Theorem forNats_length : forall n,
+    List.length (forNats n) = n.
+
+    induction n; intros; simpl in *; trivial.
+    congruence.
+
+  Qed.
+
   Definition tableSize : nat := shiftl 1 (wsize - 1).
   
   Definition preCompTable_h n ls e :=
@@ -1626,6 +1634,19 @@ Section GroupMulWNAF.
     induction ls; intuition; simpl in *.
     rewrite IHls.
     destruct ls; simpl in *; trivial.
+
+  Qed.
+
+  Theorem last_nth_equiv_gen
+   : forall (A : Type) (def : A) (ls : list A) n,
+    n = (Nat.pred (Datatypes.length ls)) ->
+     List.last ls def =
+     List.nth n ls
+       def.
+
+    intros. 
+    subst.
+    apply last_nth_equiv.
 
   Qed.
 
@@ -2034,3 +2055,24 @@ Section GroupMulWNAF.
   End SignedWindowsWithTable.
 
 End GroupMulWNAF.
+
+Theorem recode_rwnaf_odd_length : forall w nw z,
+  List.length (recode_rwnaf_odd w nw z) = (S nw).
+
+  induction nw; intros; simpl in *; trivial.
+  rewrite IHnw.
+  trivial.
+
+Qed.
+
+Theorem recode_rwnaf_length : forall w nw z,
+  nw <> 0%nat -> 
+  List.length (recode_rwnaf w nw z) = nw.
+
+  intros.
+  destruct nw.
+  lia.
+  apply recode_rwnaf_odd_length.
+
+Qed.
+
