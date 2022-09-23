@@ -1287,15 +1287,6 @@ Feq
 
 *)
 
-  Theorem sbvToInt_shiftR_equiv:
-  forall [n s : nat] x,
-  s >= 0 ->
-  sbvToInt n (shiftR n bool false x s) =
-  BinInt.Z.shiftr (sbvToInt _ x) (BinInt.Z.of_nat s).
-
-  Admitted.
-
-
 (*
   Theorem fiat_mul_scalar_rwnaf_odd_loop_body_gen_equiv : forall wsize z,
     wsize < 15 -> 
@@ -1609,7 +1600,7 @@ Feq
     lia.
     lia.
     
-    (* a nuch of size checks *)
+    (* a bunch of size checks *)
     admit.
     admit.
     lia.
@@ -1746,20 +1737,6 @@ Feq
     eapply Z.lt_le_trans; eauto.
 
   Qed.
-
-  Theorem bvToInt_sbvToInt_range : forall n v x,
-    (bvToInt n v < 2^(1 + x) ->
-    -2^x <= sbvToInt _ v < 2^x)%Z.
-  Admitted.
-
-  Theorem bvToInt_shiftR_equiv
-     : forall (n s : nat) (x : t bool n),
-       s >= 0 ->
-       bvToInt n (shiftR n bool false x s) =
-       BinInt.Z.shiftr (bvToInt n x)
-         (BinInt.Z.of_nat s).
-
-  Admitted.
 
   Theorem recode_rwnaf_odd_bv_equiv : 
     forall wsize nw n,
@@ -1988,15 +1965,68 @@ Feq
     lia.
     lia.
     lia.
+
+    Ltac bvIntSimpl_one :=
+      match goal with
+      | [|- ((bvToInt ?x _) < 2^(BinInt.Z.of_nat ?x))%Z] =>
+        apply bvToInt_bound
+      | [|- (0 <= bvToInt _ _)%Z] =>
+        apply bvToInt_nonneg
+      | [|- (- 2^_ <= 2^_)%Z] => eapply Z.le_trans; [apply Z.opp_nonpos_nonneg | idtac]
+      | [|- context[sbvToInt _ (bvURem _ _ _ )]] => 
+        rewrite sbvToInt_bvURem_equiv
+      | [|- context[bvToInt _ (shiftL _ bool false (intToBv _ 1) _ ) ]] =>
+        rewrite bvToInt_shiftL_1_equiv
+      | [|- context[sbvToInt _ (shiftL _ bool false (intToBv _ 1) _ ) ]] =>
+        rewrite sbvToInt_shiftL_1_equiv
+      | [|- context[BinInt.Z.shiftl 1 _]] =>
+        rewrite Z.shiftl_1_l
+      | [|- (0 < _ ^ _)%Z] =>
+        apply Z.pow_pos_nonneg
+      | [|- (2^_ < 2^_)%Z] =>
+        apply Z.pow_lt_mono_r
+      | [|- (_ ^ _ <= _ ^ _)%Z] =>
+        apply Z.pow_le_mono
+      | [|- (_ <= _ mod _ < _)%Z] =>
+        eapply bound_gen; [apply Z.mod_pos_bound | idtac | idtac]
+      | [|- Z.le (Z.opp _) _] =>
+        apply Z.opp_nonpos_nonneg 
+      | [|- (0 <= _ ^ _)%Z] =>
+        apply Z.pow_nonneg
+      | [|- (_ <= _ < _)%Z] =>
+        split
+      end.
+
+    Ltac bvIntSimpl := repeat (bvIntSimpl_one; try lia).
     
-    (* a bunch of size checks *)
-    admit.
-    admit.
+    bvIntSimpl.
+    bvIntSimpl.
     lia.
-    admit.
-    admit.
-    (* This is the complicated one that we proved somewhere else*)
-    admit.
+    bvIntSimpl.
+    bvIntSimpl.
+
+    (* When we subtract the new window from the scalar, it doesn't get too big*)
+    rewrite sbvToInt_bvSub_equiv; try lia.
+    rewrite sbvToInt_bvURem_equiv; try lia.
+    rewrite bvToInt_shiftL_1_equiv; try lia.
+    rewrite sbvToInt_shiftL_1_equiv; try lia.
+    repeat rewrite Z.shiftl_1_l.
+    split.
+    apply Zorder.Zle_minus_le_0.
+    rewrite <- (@Z.sub_0_r (bvToInt 384%nat n)).
+    apply Z.sub_le_mono.
+    rewrite Z.sub_0_r.
+    apply Z.mod_le.
+    apply bvToInt_nonneg.
+    apply Z.pow_pos_nonneg; simpl; lia.
+    apply Z.pow_nonneg; simpl; lia.
+    apply sub_window_lt.
+    lia.
+    bvIntSimpl.
+    bvIntSimpl.
+    bvIntSimpl.
+    bvIntSimpl.
+    bvIntSimpl.
     lia.
    
     rewrite H3.
@@ -2022,10 +2052,15 @@ Feq
     eauto.
     simpl.
     lia.
-  (* 2 * 2 ^wsize is positive *)
-    admit.
+    (* 2 * 2 ^wsize is positive *)
+    rewrite bvMul_2_shiftl_equiv.
+    rewrite shiftL_shiftL.
+    bvIntSimpl.
+   
     (* 2 * 2^wsize <= 2^383 *)
-    admit.
+    rewrite bvMul_2_shiftl_equiv.
+    rewrite shiftL_shiftL.
+    bvIntSimpl.
 
     rewrite sbvToInt_bvURem_equiv; try lia.
     split.
@@ -2034,12 +2069,16 @@ Feq
     eapply Z.pow_nonneg; simpl; lia.
     apply Z.mod_pos_bound.
     (* 2 * 2 ^wsize is positive *)
-    admit.
+    rewrite bvMul_2_shiftl_equiv.
+    rewrite shiftL_shiftL.
+    bvIntSimpl.
 
     eapply Z.lt_le_trans.
     apply Z.mod_pos_bound.
     (* 2 * 2 ^wsize is positive *)
-    admit.
+    rewrite bvMul_2_shiftl_equiv.
+    rewrite shiftL_shiftL.
+    bvIntSimpl.
 
     rewrite bvMul_2_shiftl_equiv.
     rewrite shiftL_shiftL.
@@ -2049,11 +2088,14 @@ Feq
     lia.
 
     (* 2 * 2 ^wsize is positive *)
-    admit.
+    rewrite bvMul_2_shiftl_equiv.
+    rewrite shiftL_shiftL.
+    bvIntSimpl.
 
     (* 2 * 2^wsize < 2^384 *)
-    admit.
-
+    rewrite bvMul_2_shiftl_equiv.
+    rewrite shiftL_shiftL.
+    bvIntSimpl.
 
     rewrite bvToInt_sbvToInt_equiv.
     split.
@@ -2099,12 +2141,16 @@ Feq
     eauto.
 
     (* integers from 384 bit vectors are less than 2^384 *)
-    admit.
+    bvIntSimpl.
 
-  (* 2 * 2 ^wsize is positive *)
-    admit.
+    (* 2 * 2 ^wsize is positive *)
+    rewrite bvMul_2_shiftl_equiv.
+    rewrite shiftL_shiftL.
+    bvIntSimpl.
     (* 2 * 2^wsize <= 2^383 *)
-    admit.
+    rewrite bvMul_2_shiftl_equiv.
+    rewrite shiftL_shiftL.
+    bvIntSimpl.
 
     rewrite sbvToInt_bvURem_equiv; try lia.
     split.
@@ -2113,12 +2159,16 @@ Feq
     eapply Z.pow_nonneg; simpl; lia.
     apply Z.mod_pos_bound.
     (* 2 * 2 ^wsize is positive *)
-    admit.
+    rewrite bvMul_2_shiftl_equiv.
+    rewrite shiftL_shiftL.
+    bvIntSimpl.
 
     eapply Z.lt_le_trans.
     apply Z.mod_pos_bound.
     (* 2 * 2 ^wsize is positive *)
-    admit.
+    rewrite bvMul_2_shiftl_equiv.
+    rewrite shiftL_shiftL.
+    bvIntSimpl.
 
     rewrite bvMul_2_shiftl_equiv.
     rewrite shiftL_shiftL.
@@ -2128,10 +2178,14 @@ Feq
     lia.
 
     (* 2 * 2 ^wsize is positive *)
-    admit.
+    rewrite bvMul_2_shiftl_equiv.
+    rewrite shiftL_shiftL.
+    bvIntSimpl.
 
     (* 2 * 2^wsize < 2^384 *)
-    admit.
+    rewrite bvMul_2_shiftl_equiv.
+    rewrite shiftL_shiftL.
+    bvIntSimpl.
 
     rewrite bvToInt_sbvToInt_equiv.
     split.
@@ -2152,7 +2206,7 @@ Feq
     rewrite Z.shiftl_1_l.
     eapply Z.pow_lt_mono_r; simpl; lia.
     lia.
-  Admitted.
+  Qed.
 
 
   Definition recode_rwnaf_odd_bv_scanl_fix_body wsize n :=

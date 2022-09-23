@@ -1415,5 +1415,32 @@ Theorem bvSShr_Z_shiftr_equiv : forall n x1 x2 y1 y2,
   sbvToInt _ (bvSShr n x1 y1) = Z.shiftr x2 y2.
 Admitted.
 
+Theorem sbvToInt_shiftR_equiv:
+  forall [n s : nat] x,
+  (s >= 0)%nat ->
+  sbvToInt n (shiftR n bool false x s) =
+  BinInt.Z.shiftr (sbvToInt _ x) (BinInt.Z.of_nat s).
+
+Admitted.
+
+
+Theorem bvToInt_sbvToInt_range : forall n v x,
+  (bvToInt n v < 2^(1 + x) ->
+  -2^x <= sbvToInt _ v < 2^x)%Z.
+Admitted.
+
+Theorem bvToInt_shiftR_equiv
+   : forall (n s : nat) (x : Vector.t bool n),
+     (s >= 0)%nat ->
+     bvToInt n (shiftR n bool false x s) =
+     BinInt.Z.shiftr (bvToInt n x)
+       (BinInt.Z.of_nat s).
+
+Admitted.
+
+Theorem bvToInt_bound : forall n v,
+    (0 <= bvToInt n v < 2^(Z.of_nat n))%Z.
+
+Admitted.
 
 
