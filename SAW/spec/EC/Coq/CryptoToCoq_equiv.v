@@ -1267,7 +1267,7 @@ Qed.
 Theorem fold_left_R : forall (A1 A2 B1 B2 : Type)(RA : A1 -> A2 -> Prop)(RB : B1 -> B2 -> Prop)(f1 : A1 -> B1 -> A1)(f2: A2 -> B2 -> A2) ls1 ls2 a1 a2,
   RA a1 a2 ->
   List.Forall2 RB ls1 ls2 ->
-  (forall a1 a2 b1 b2, RA a1 a2 -> RB b1 b2 -> RA (f1 a1 b1) (f2 a2 b2)) ->
+  (forall a1 a2 b1 b2, RA a1 a2 -> RB b1 b2 -> In b1 ls1 -> In b2 ls2 -> RA (f1 a1 b1) (f2 a2 b2)) ->
   RA (List.fold_left f1 ls1 a1) (List.fold_left f2 ls2 a2).
 
   induction ls1; destruct ls2; intros; simpl in *; trivial.
@@ -1443,4 +1443,98 @@ Theorem bvToInt_bound : forall n v,
 
 Admitted.
 
+Theorem bvXor_cons : forall n x y u v,
+  bvXor (S n) (Vector.cons u x) (Vector.cons v y) = 
+  Vector.cons (xor u v) (bvXor _ x y).
 
+  intros.
+  reflexivity.
+
+Qed.
+
+Theorem bvEq_cons : forall n x y u v,
+  bvEq (S n) (Vector.cons u x) (Vector.cons v y) = 
+  andb (Bool.eqb u v) (bvEq _ x y).
+
+  intros.
+  reflexivity.
+Qed.
+
+Theorem intToBv_0_S : forall n,
+  intToBv (S n) 0 = Vector.cons false (intToBv n 0).
+
+ Admitted.
+
+Theorem intToBv_add_equiv : forall n x y,
+  intToBv n (x + y) = bvAdd n (intToBv n x) (intToBv n y).
+
+Admitted.
+
+Theorem bvAdd_same_l_if : forall n x y1 y2,
+  (bvAdd n x y1) = (bvAdd n x y2) ->
+  y1 = y2.
+Admitted.
+
+Theorem intToBv_eq_pos : forall n x y,
+  (0 <= x < 2^(Z.of_nat n))%Z ->
+  (0<= y < 2^(Z.of_nat n))%Z ->
+  intToBv n x = intToBv n y ->
+  x = y.
+Admitted.
+
+Theorem bvToNat_lt_word : forall n x,
+    (Z.of_nat (bvToNat n x)) < 2^64.
+Admitted.
+
+(*
+Theorem sign_extend_equiv : forall n1 n2 z,
+    (-2^(Z.of_nat n1) <= z < 2^(Z.of_nat n1)) ->
+    append 
+  (if sawAt (S n1) Bool (intToBv (S n1) z) 0%nat
+   then ecCompl (bitvector n2) (PLogicWord n2) (ecZero (bitvector n2) (intToBv n2 0))
+   else ecZero (bitvector n2) (intToBv n2 0)) (intToBv (S n1) z) = intToBv _ z.
+Admitted.
+*)
+
+Theorem sbvToInt_0_replicate: forall n b2,
+    sbvToInt n b2 = 0%Z ->
+    b2 = replicate _ _ false.
+Admitted.
+
+Theorem shiftR_false_0 : forall n1 n2, 
+    (shiftR n1 bool false (replicate n1 bool false) n2) = (replicate n1 bool false).
+Admitted.
+
+Theorem bvAnd_replicate_0 : forall n v,
+    bvAnd (replicate n bool false) v = replicate n bool false.
+Admitted.
+
+Theorem bvNeg_replicate_0 : forall n,
+    bvNeg _ (replicate n bool false) = replicate n bool false.
+Admitted.
+
+Theorem bvAdd_replicate_0 : forall n v,
+  bvAdd _ (replicate n bool false) v = v.
+Admitted.
+
+Theorem sbvToInt_replicate_0 : forall n,
+  sbvToInt _ (replicate n bool false) = 0.
+Admitted.
+
+Theorem shiftR_small_nonneg : forall n1 n2 v,
+  (0 <= sbvToInt _ v < 2^(Z.of_nat n2))%Z ->
+  (shiftR n1 bool false v n2) = replicate n1 bool false.
+Admitted.
+
+Theorem bvAnd_shiftR_small_neg : forall n1 n2 v,
+  (-2^(Z.of_nat n2) <= sbvToInt _ v < 0)%Z ->
+  (bvAnd (shiftR n1 bool false v n2) (intToBv _ 1)) = intToBv _ 1.
+Admitted.
+
+Theorem bvNeg_1_replicate : forall n,
+    bvNeg n (intToBv n 1) = replicate n bool true.
+Admitted.
+
+Theorem twos_complement_equiv : forall n v,
+    sbvToInt n (bvAdd n (bvXor n v (replicate n bool true)) (intToBv n 1)) = Z.opp (sbvToInt _ v).
+Admitted.

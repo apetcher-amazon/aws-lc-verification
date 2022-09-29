@@ -2336,20 +2336,58 @@ Feq
 
   Qed.
 
+  Theorem fmul_same_l_if:
+    forall [x y z : F],
+    ~ Feq x 0 ->
+    Feq (x * y) (x * z) -> Feq y z.
+
+    intros.
+    eapply fmul_same_r_if; eauto.
+    rewrite commutative.
+    rewrite H0.
+    apply commutative.
+  Qed.
+
+  Theorem fmul_same_l:
+    forall [x y z : F],
+    Feq y z ->
+    Feq (x * y) (x * z).
+
+    intros.
+    rewrite H.
+    reflexivity.
+  Qed.
+
   Theorem Proper_opp : Proper (Jacobian.eq ==> Jacobian.eq) (@Jacobian.opp F Feq Fzero Fone Fopp Fadd Fsub Fmul Finv Fdiv a b F_Field Feq_dec).
-  Admitted.
+  
+    intros.
+    unfold Proper, respectful, Jacobian.eq, Jacobian.opp.
+    intros.
+    simpl in *.
+    destruct (proj1_sig x). destruct p.
+    destruct (proj1_sig y). destruct p.
+    destruct (dec (Feq f 0)).
+    trivial.
+    intuition idtac.
+    rewrite opp_mul_eq.
+    rewrite (opp_mul_eq f4).
+    repeat rewrite <- (associative (Fopp 1)).
+    eapply fmul_same_l; eauto.
+  Qed.
 
   Definition conditional_subtract_if_even_ct := conditional_subtract_if_even_ct Fsquare Fadd Fsub Fmul Fopp.
-
-  Definition fiat_point_opp p :=
-    let '(x, y, z) := seqToProd p in
-    prodToSeq (x, Fopp y, z).
+  Definition fiat_point_opp := (fiat_point_opp Fopp).
 
   Theorem conditional_subtract_if_even_ct_jac_eq_ite : forall n p1 p2,
     jac_eq (seqToProd (EC_fiat_P384_7.conditional_subtract_if_even_ct Fsquare Fmul Fsub Fadd
         Fopp p1 n p2)) (seqToProd (if (Nat.even (bvToNat _ n)) then (fiat_point_add false p1 (fiat_point_opp p2)) else p1)).
-  Admitted.
+  
+    intros.
+    rewrite conditional_subtract_if_even_ct_equiv.
+    eapply jac_eq_refl.
+  Qed.
 
+(*
   Theorem fiat_pre_comp_table_0 : forall p,
     (ecAt 64 (seq 3 (seq 6 (seq 64 Bool))) Integer
            PIntegralInteger
@@ -2357,7 +2395,10 @@ Feq
               p)
            (ecNumber 0%nat Integer PLiteralInteger)) = p.
 
-  Admitted.
+    intros.
+
+  Abort.
+*)
 
   Theorem fiat_point_opp_equiv : forall p,
     jac_eq 
@@ -2373,7 +2414,96 @@ Feq
     apply jac_eq_refl.
   Qed.
 
-  Theorem fiat_selext_point_ct_gen_nth_equiv_h : forall ls n a,
+  Theorem map_bvAdd_0 : forall n ls,
+    (List.map (bvAdd n (bvNat n 0%nat)) ls) = ls.
+
+    induction ls; intros; simpl in *.
+    reflexivity.
+    rewrite IHls.
+    f_equal.
+    apply bvAdd_id_l.
+
+  Qed.
+
+  Theorem combine_app : forall (A B : Type)(lsa1 lsa2 : list A)(lsb1 lsb2 : list B),
+    List.length lsa1 = List.length lsb1 ->
+    combine (lsa1 ++ lsa2) (lsb1 ++ lsb2) = (combine lsa1 lsb1)++(combine lsa2 lsb2).
+
+    induction lsa1; destruct lsb1; intros; simpl in *; try discriminate.
+    reflexivity.
+    f_equal.
+    apply IHlsa1.
+    lia.
+  Qed.
+
+  Theorem bvector_eq_dec : forall n (v1 v2 : VectorDef.t bool n),
+    {v1 = v2} + {v1 <> v2}.
+
+    intros.
+    apply (Vector.eq_dec _ Bool.eqb).
+    intros.
+    apply Bool.eqb_true_iff.
+
+  Defined.
+   
+
+  Theorem fiat_field_cmovznz_equiv : forall x y z,
+    fiat_field_cmovznz x y z = if (bvEq _ x (intToBv 64 0)) then y else z.
+
+    intros.
+    reflexivity.
+
+  Qed.
+
+  Theorem toN_excl_bv_length: forall n x,
+    List.length (toN_excl_bv n x) = x.
+
+    induction x; intros; simpl in *.
+    trivial.
+    rewrite app_length.
+    rewrite IHx.
+    simpl.
+    lia.
+
+  Qed.
+
+  Theorem bvXor_bvEq : forall n y w,
+    bvEq n (bvXor _ y w) (intToBv _ 0)  = bvEq _ y w.
+  
+    induction n; intros; simpl in *.
+    reflexivity.
+    destruct (@Vec_S_cons _ _  y). destruct H.
+    destruct (@Vec_S_cons _ _ w). destruct H0. 
+    subst.
+    rewrite bvXor_cons.
+    rewrite intToBv_0_S.
+    repeat rewrite bvEq_cons.
+    destruct x; destruct x1; simpl; trivial.
+
+  Qed.
+
+  Theorem fiat_select_point_loop_body_equiv : forall w x y z,
+    fiat_select_point_loop_body w x y z = 
+       if (bvEq _ y w) then z else x.
+
+    intros. 
+    unfold fiat_select_point_loop_body.
+    simpl.
+    unfold ecXor.
+    simpl.
+    repeat rewrite fiat_field_cmovznz_equiv.
+    case_eq (bvEq 64 (bvXor 64 y w) (intToBv 64 0)); intros;
+    rewrite sawAt_3_equiv;
+    case_eq (bvEq _ y w); intros; 
+    trivial;
+    rewrite bvXor_bvEq in H; 
+    congruence.
+
+  Qed.
+
+  Theorem fiat_select_point_ct_gen_nth_equiv_h : forall ls n a,
+    (Z.of_nat (List.length ls) < 2^64 )%Z ->
+     (Z.of_nat n < 2^64 )%Z ->
     List.fold_left
       (fun (acc : seq 3 (seq 6 (seq 64 Bool)))
          (p : seq 64 Bool * seq 3 (seq 6 (seq 64 Bool))) =>
@@ -2382,25 +2512,94 @@ Feq
       (of_list [zero_felem; zero_felem; zero_felem]) =
     List.nth n ls (cons F 0 2 (cons F 0 1 (cons F 0 0 (nil F)))).
 
-    induction ls; intros; simpl in *.
+    induction ls using rev_ind; intros; simpl in *.
     destruct n; reflexivity.
+    rewrite app_length.
+    simpl.
+    rewrite PeanoNat.Nat.add_1_r.
+    simpl.
+    rewrite map_app.
+    rewrite combine_app.
+    rewrite fold_left_app.
+    rewrite IHls.
+    simpl.
+    rewrite fiat_select_point_loop_body_equiv.
+    case_eq (bvEq 64 (bvAdd 64 (intToBv 64 (Z.of_nat a0)) (intToBv 64 (Z.of_nat (Datatypes.length ls))))
+    (intToBv 64 (Z.of_nat (a0 + n)))); intros.
+    assert (List.length ls = n). (* because list length and n are small*)
+    apply bvEq_eq in H1.
+    rewrite Znat.Nat2Z.inj_add in H1.
+    rewrite intToBv_add_equiv in H1.
+    apply bvAdd_same_l_if in H1.
+    apply intToBv_eq_pos in H1.
+    lia.
+    intuition idtac.
+    lia.
+    rewrite app_length in H.
+    lia.
+    lia.
 
-    destruct n.
-    
+    rewrite app_nth2.
+    subst.
+    rewrite PeanoNat.Nat.sub_diag.
+    reflexivity.
+    lia.
 
-  Abort.
+    destruct (Compare_dec.lt_eq_lt_dec n (List.length ls)). 
+    destruct s.
+    rewrite app_nth1.
+    reflexivity.
+    lia.
+
+    subst.
+    (* contradiction *)
+    rewrite Znat.Nat2Z.inj_add in H1.
+    rewrite intToBv_add_equiv in H1.
+    rewrite bvEq_refl in H1.
+    discriminate.
+
+    rewrite app_nth2.
+    repeat rewrite nth_overflow.
+    reflexivity.
+    simpl.
+    lia.
+    lia.
+    lia.
+    rewrite app_length in H.
+    lia.
+    trivial.
+    rewrite map_length.
+    rewrite toN_excl_bv_length.
+    reflexivity.
+
+  Qed.
 
   Theorem fiat_select_point_ct_gen_nth_equiv : forall x ls,
+    (Z.of_nat (Datatypes.length ls) < 2 ^ 64)%Z ->
+    (Z.of_nat (bvToNat 64%nat x) < 2 ^ 64)%Z ->
     fiat_select_point_ct_gen x ls = List.nth (bvToNat _ x) ls (cons _ Fzero _ (cons _ Fzero _ (cons _ Fzero _ (nil _)))).
 
+    intros.
+    rewrite <- (bvNat_bvToNat_id _ x) at 1.
     unfold fiat_select_point_ct_gen.
+    specialize (fiat_select_point_ct_gen_nth_equiv_h ls (bvToNat 64 x) 0); intros.
+    rewrite map_bvAdd_0 in H1.
+    apply H1.
+    trivial.
+    trivial.
+  Qed.
 
-    (* apply fiat_selext_point_ct_gen_nth_equiv_h. *)
-  Admitted.
-
+(*
   Theorem sign_extend_16_64_intToBv_equiv : forall z,
+    (-2^15 <= z < 2^15)%Z ->
     sign_extend_16_64 (intToBv 16 z) = intToBv 64 z.
-  Admitted.
+
+    intros.
+    unfold sign_extend_16_64.
+    simpl.
+    apply  (@sign_extend_equiv 15 48 z); trivial.
+  Abort.
+*)
 
   Theorem groupDouble_n_zero : forall n,
     groupDouble_n Jacobian.double n zero_point == zero_point.
@@ -2485,6 +2684,7 @@ Feq
   Qed.
 
   Theorem ct_abs_equiv : forall wsize b1 b2,
+    (-2^(Z.of_nat wsize) <= b1 < 2^(Z.of_nat wsize))%Z ->
     b1 = sbvToInt 16 b2 ->
     sbvToInt 16 (bvAdd 16
                        (bvXor 16 b2
@@ -2498,7 +2698,47 @@ Feq
                              wsize) (bvNat 16 1%nat)))
     =
     Z.abs b1.
-  Admitted.
+
+    intros.
+    subst.
+    remember (bvAnd 16 (shiftR 16 bool false b2 wsize) (bvNat 16 1%nat)) as is_neg.
+    case_eq (sbvToInt 16 b2); intros; simpl in *.
+
+    (* zero *)
+    apply sbvToInt_0_replicate in H0.
+    subst.
+    rewrite bvXor_comm.
+    rewrite bvXor_zero.
+    rewrite shiftR_false_0.
+    repeat rewrite bvAnd_replicate_0.
+    rewrite bvNeg_replicate_0.
+    rewrite bvAdd_replicate_0.
+    apply sbvToInt_replicate_0.
+
+    (* positive *)
+    simpl.
+    rewrite shiftR_small_nonneg in Heqis_neg.
+    rewrite bvAnd_replicate_0 in Heqis_neg.
+    rewrite Heqis_neg.
+    rewrite bvNeg_replicate_0.
+    rewrite bvXor_zero. 
+    rewrite bvAdd_comm.
+    rewrite bvAdd_replicate_0.
+    trivial.
+    intuition idtac.
+    lia.
+
+    (* negative *)
+    rewrite bvAnd_shiftR_small_neg in Heqis_neg.
+    rewrite Heqis_neg.
+    rewrite bvNeg_1_replicate.
+    rewrite twos_complement_equiv.
+    rewrite H0.
+    apply Pos2Z.opp_neg.
+    intuition idtac.
+    lia.
+
+  Qed.
 
   Theorem groupDouble_n_double_comm : forall n (a1 : point),
     Jacobian.eq
@@ -2687,6 +2927,7 @@ Feq
   Theorem mul_body_equiv : forall pred_wsize p a1 a2 b1 b2,
     jac_eq (fromPoint a1) (seqToProd a2) ->
     b1 = sbvToInt 16 b2 ->
+    (- 2 ^ Z.of_nat (S pred_wsize) <= b1 < 2 ^ Z.of_nat (S pred_wsize))%Z ->
     jac_eq
   (fromPoint
      (groupMul_signedWindows_fold_body Jacobian.add Jacobian.double
@@ -2729,7 +2970,7 @@ Feq
     trivial.
     
     subst.
-    apply Z.ltb_lt in H1.
+    apply Z.ltb_lt in H2.
     eapply jac_eq_symm.
     eapply conditional_point_opp_ifso_equiv.
     unfold point_id_to_limb.
@@ -2740,14 +2981,9 @@ Feq
     eapply (sbvToInt_nz_nth _ H0).
     Search nth_order append.
     assert (15 < 16) by lia.
-    erewrite (@nth_order_append_eq Bool _ 16 _ 48 (intToBv 48 0) 15 H0 H2).
+    erewrite (@nth_order_append_eq Bool _ 16 _ 48 (intToBv 48 0) 15 H0 H3).
     rewrite nth_order_bvAnd_eq.
-    Search shiftR.
-    unfold shiftR.
-    unfold shiftR1.
-    Search nth_order bvAnd.
-    Search sbvToInt.
-    (* probably need to add assumption that the integer is a window, so it is in the right range *)
+    (* shifting a negative windows right by wsize leaves a 1 in lsb *)
     admit.
 
     match goal with
@@ -2767,6 +3003,7 @@ Feq
     apply bvSShr_Z_shiftr_equiv.
     trivial.
     apply ct_abs_equiv.
+    trivial.
     trivial.
 
     eapply jac_eq_trans.
@@ -2778,14 +3015,14 @@ Feq
     trivial.
     
     subst.
-    apply Z.ltb_ge in H1.
+    apply Z.ltb_ge in H2.
     eapply jac_eq_symm.
     eapply conditional_point_opp_ifnot_equiv.
     unfold point_id_to_limb.
     removeCoerce.
     simpl.
     
-    (* probably need to add assumption that the integer is a window, so it is in the right range *)
+    (* shiftR produces all 0 *)
     admit.
 
     match goal with
@@ -2805,6 +3042,7 @@ Feq
     apply bvSShr_Z_shiftr_equiv.
     trivial.
     apply ct_abs_equiv.
+    trivial.
     trivial.
   Admitted.
    
@@ -2866,7 +3104,7 @@ Feq
     rewrite (@fold_left_unroll_one _ _ 0%Z).
     eapply (@fold_left_R _ _ _ _ 
       (fun a1 a2 => jac_eq (fromPoint a1) (seqToProd a2))
-      (fun b1 b2 => b1 = sbvToInt 16 b2)
+      (fun b1 b2 => b1 = sbvToInt 16 b2 (* /\ (-2^(Z.of_nat wsize) <= b1 < 2^(Z.of_nat wsize))%Z *))
     ).
     erewrite (@forall2_map_eq _ _
       (intToBv 16)
@@ -2981,6 +3219,9 @@ Feq
     lia.
     lia.
     trivial.
+    (* table is not huge *)
+    admit.
+    apply bvToNat_lt_word.
     reflexivity.
     
     rewrite bvToNat_toZ_equiv.
@@ -2989,7 +3230,6 @@ Feq
     apply fiat_mul_scalar_rwnaf_gen_equiv.
     lia.
     admit.
-    trivial.
     intros.
     assert (b0 = c).
     eapply H2.
@@ -3004,17 +3244,18 @@ Feq
     eapply Forall2_tl.
     eapply Forall2_rev.
     rewrite bvToNat_toZ_equiv.
-    apply fiat_mul_scalar_rwnaf_gen_equiv.
+    eapply fiat_mul_scalar_rwnaf_gen_equiv.
     lia.
     admit.
-    trivial.
-
+ 
     intros.  
     destruct wsize.
     trivial.
     lia.
     apply mul_body_equiv; trivial.
-
+    subst.
+    (* use recode_rwnaf_correct to conclude size of value is correct *)
+    admit.
     rewrite rev_length.
     rewrite recode_rwnaf_length.
     lia.
