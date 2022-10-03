@@ -2914,13 +2914,12 @@ Feq
   Theorem sbvToInt_sign_extend_16_64_equiv : forall x,
     sbvToInt _ (sign_extend_16_64 x) = sbvToInt _ x.
 
-  Admitted.
+    intros.
+    unfold sign_extend_16_64.
+    simpl.
+    apply (@sbvToInt_sign_extend_equiv 16 48).
 
-  Theorem sbvToInt_nz_nth : forall n (v : Vec n _) n' (nlt : n' < n),
-    nth_order v nlt = true ->
-    sbvToInt _ v <> 0%Z.
-
-  Admitted.
+  Qed.
 
 
   (*
@@ -2971,32 +2970,26 @@ Feq
     
   Qed.
 
-  Theorem nth_order_shiftR1_eq : forall (A : Type)(n : nat)(v : Vec n A) n' (nlt : n' < n)(nlt' : pred n' < n) a,
-    n' <> 0%nat ->
-    nth_order (shiftR1 _ _ a v) nlt = nth_order v nlt'.
+  Theorem nat_shiftl_gt_base : forall n2 n1,
+    (0 < n2 ->
+    0 < n1 ->
+    n1 < Nat.shiftl n1 n2).
 
-  (*
-    intros.
-    unfold shiftR1.
-    destruct n.
+    induction n2; intros; simpl in *.
     lia.
+    destruct n2.
     simpl.
-    destruct n'. 
+    unfold Nat.double.
+    lia.
+    assert (n1 < Nat.shiftl n1 (S n2)).
+    eapply IHn2; lia.
+    unfold Nat.double.
     lia.
     
-    Search nth_order cons.
-    assert (n' < n) by lia.
-    rewrite (@nth_order_S_cons A a0 n (shiftout v) n' nlt H0).
-
-    induction v; intros.
-    lia.
-    unfold shiftR1.
-    unfold shiftout.
-    simpl.
-    *)
-  Admitted.
+  Qed.
 
   Theorem mul_body_equiv : forall pred_wsize p a1 a2 b1 b2,
+    0 < pred_wsize < 15 ->
     jac_eq (fromPoint a1) (seqToProd a2) ->
     b1 = sbvToInt 16 b2 ->
     (- 2 ^ Z.of_nat (S pred_wsize) <= b1 < 2 ^ Z.of_nat (S pred_wsize))%Z ->
@@ -3042,7 +3035,7 @@ Feq
     trivial.
     
     subst.
-    apply Z.ltb_lt in H2.
+    apply Z.ltb_lt in H3.
     eapply jac_eq_symm.
     eapply conditional_point_opp_ifso_equiv.
     unfold point_id_to_limb.
@@ -3050,13 +3043,22 @@ Feq
     simpl.
     
     assert (63 < 64)%nat by lia.
-    eapply (sbvToInt_nz_nth _ H0).
+    eapply (sbvToInt_nz_nth _ H1).
     Search nth_order append.
     assert (15 < 16) by lia.
-    erewrite (@nth_order_append_eq Bool _ 16 _ 48 (intToBv 48 0) 15 H0 H3).
+    erewrite (@nth_order_append_eq Bool _ 16 _ 48 (intToBv 48 0) 15 H1 H4).
     rewrite nth_order_bvAnd_eq.
-    (* shifting a negative windows right by wsize leaves a 1 in lsb *)
-    admit.
+    (* shifting a negative window right by wsize leaves a 1 in lsb *)
+    rewrite shiftR1_eq.
+    rewrite shiftR_shiftR_eq.
+    assert (15 - (pred_wsize + 1)  < 16)%nat.
+    lia.
+    rewrite (@nth_order_shiftR_eq bool (pred_wsize + 1) 15 16 _ _ H5); intros.
+    apply (@sbvToInt_neg_bits_set _  (pred_wsize + 1)%nat).
+    lia.
+    rewrite PeanoNat.Nat.add_1_r.
+    intuition idtac.
+    lia.
 
     match goal with
     | [|- jac_eq (fromPoint (List.nth ?a _ _)) (seqToProd (List.nth ?b _ _))] =>
@@ -3064,8 +3066,12 @@ Feq
     end.
     eapply (@Forall2_nth _ _ (fun a b => jac_eq (fromPoint a) (seqToProd b))).
     apply preCompTable_equiv.
-    admit.
-    (* need to use (0, 1, 0) *)
+    unfold tableSize.
+    simpl.
+    rewrite NPeano.Nat.sub_0_r.
+    apply nat_shiftl_gt_base; lia.
+    eapply jac_eq_refl_gen.
+    simpl. unfold zero_point_h.
     admit.
 
     eapply bvToNat_Z_to_nat_equiv.
@@ -3087,7 +3093,7 @@ Feq
     trivial.
     
     subst.
-    apply Z.ltb_ge in H2.
+    apply Z.ltb_ge in H3.
     eapply jac_eq_symm.
     eapply conditional_point_opp_ifnot_equiv.
     unfold point_id_to_limb.
@@ -3325,6 +3331,7 @@ Feq
     trivial.
     lia.
     apply mul_body_equiv; trivial.
+    admit.
     subst.
     (* use recode_rwnaf_correct to conclude size of value is correct *)
     admit.

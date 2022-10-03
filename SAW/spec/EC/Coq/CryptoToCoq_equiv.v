@@ -1496,6 +1496,17 @@ Theorem sign_extend_equiv : forall n1 n2 z,
 Admitted.
 *)
 
+Theorem sbvToInt_sign_extend_equiv : forall n1 n2 x,
+    sbvToInt _
+  (append
+     (if sawAt n1 Bool x 0%nat
+      then
+       ecCompl (bitvector n2) (PLogicWord n2)
+         (ecZero (bitvector n2) (intToBv n2 0))
+      else ecZero (bitvector n2) (intToBv n2 0)) x) = 
+sbvToInt n1 x.
+Admitted.
+
 Theorem sbvToInt_0_replicate: forall n b2,
     sbvToInt n b2 = 0%Z ->
     b2 = replicate _ _ false.
@@ -1546,3 +1557,34 @@ Admitted.
 Theorem sawAt_nth_order_equiv : forall (A : Type)(inh : Inhabited A)(n1 n2 : nat)(v : Vec n1 A)(ltpf : (n2 < n1)%nat),
   @sawAt n1 A inh v n2 = nth_order v ltpf.
 Admitted.
+
+Theorem sbvToInt_nz_nth : forall n (v : Vec n _) n' (nlt : (n' < n)%nat),
+  nth_order v nlt = true ->
+  sbvToInt _ v <> 0%Z.
+
+Admitted.
+
+Print shiftR1.
+Print shiftR.
+Search shiftR.
+
+Theorem shiftR_shiftR_eq : forall (A : Type)(n1 n2 len : nat)(v : Vec len A) a,
+    shiftR _ _ a (shiftR _ _ a v n1) n2 = shiftR _ _ a v (n1 + n2)%nat.
+Admitted.
+
+Theorem shiftR1_eq : forall (A : Type)(len : nat)(v : Vec len A) a,
+  shiftR1 _ _ a v = shiftR _ _ a v 1.
+Admitted.
+
+Theorem nth_order_shiftR_eq : forall (A : Type)(n1 n2 len : nat)(v : Vec len A) (nlt : (n2 < len)%nat)(nlt' : (n2-n1 < len)%nat) a,
+  (n1 <= n2)%nat ->
+  nth_order (shiftR _ _ a v n1) nlt = nth_order v nlt'.
+
+Admitted.
+
+Theorem sbvToInt_neg_bits_set : forall n wsize b2 n' (ltpf : (n' < n)%nat),
+    (n' <= n - wsize)%nat ->
+    (- 2 ^ Z.of_nat wsize <= sbvToInt n b2 < 0)%Z ->
+    nth_order b2 ltpf = true.
+Admitted.
+
