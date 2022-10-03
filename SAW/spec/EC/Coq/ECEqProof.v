@@ -2791,6 +2791,40 @@ Feq
  
   Qed.
 
+  Definition point_opp (p : F * F * F) : F * F * F :=
+    ((fst (fst p), Fopp (snd (fst p))), snd p).
+
+  Theorem jac_eq_opp : forall p1 p2,
+    jac_eq p1 p2 ->
+    jac_eq (point_opp p1) (point_opp p2).
+
+    intros.
+    unfold jac_eq, point_opp in *.
+    destruct p1. destruct p.
+    destruct p2. destruct p.
+    simpl in *.
+    destruct (dec (Feq f 0)); trivial.
+    intuition idtac.
+    rewrite opp_mul_eq.
+    rewrite <- associative.
+    symmetry.
+    rewrite opp_mul_eq.
+    rewrite <- associative.
+    symmetry.
+    apply fmul_same_l.
+    trivial.
+ 
+  Qed.
+
+  Theorem fiat_point_opp_prod_equiv : forall p,
+    (seqToProd (fiat_point_opp (prodToSeq p))) = point_opp p.
+
+    intros.
+    reflexivity.
+
+  Qed.
+
+
   Theorem conditional_point_opp_equiv : forall x p1 p2,
     jac_eq (fromPoint p1) (seqToProd p2) ->
     jac_eq
@@ -2798,7 +2832,50 @@ Feq
      (conditional_point_opp Fopp x p2))
   (fromPoint (if (dec ((sbvToInt _ x) = 0%Z)) then p1 else (Jacobian.opp p1))).
 
-  Admitted.
+    intros.
+    unfold conditional_point_opp.
+    rewrite fiat_field_cmovznz_equiv.
+    destruct (dec (sbvToInt 64 x = 0%Z)); intros.
+    apply sbvToInt_0_replicate in e.
+    subst.
+    rewrite rep_false_eq_int_bv.
+    rewrite bvEq_refl.
+    rewrite sawAt_3_equiv.
+    apply jac_eq_symm.
+    trivial.
+
+    case_eq (bvEq 64 x (intToBv 64 0)); intros.
+    apply bvEq_eq in H0.
+    rewrite intToBv_0_eq_replicate in H0.
+    subst.
+    rewrite sbvToInt_replicate_0 in n.
+    intuition idtac.
+    eapply jac_eq_symm.
+    eapply jac_eq_trans.
+    apply fiat_point_opp_equiv.
+    rewrite fiat_point_opp_prod_equiv.
+    eapply jac_eq_trans.
+    eapply jac_eq_opp; eauto.
+    eapply jac_eq_symm.
+    eapply jac_eq_refl_gen.
+    unfold seqToProd, point_opp; simpl.
+    
+    repeat match goal with 
+    | [|- context[nth_order (cons ?A ?x ?n ?v) ?pf]] =>
+      rewrite (@nth_order_0_cons A x n v)
+    | [|- context[nth_order (cons ?A ?x ?n ?v) ?pf]] =>
+      erewrite (@nth_order_S_cons A x n v)
+    end.
+
+     repeat erewrite sawAt_nth_order_equiv.
+    reflexivity.
+
+    Unshelve.
+    lia.
+    lia.
+    lia.
+
+  Qed.
 
   Theorem conditional_point_opp_ifso_equiv : forall x p1 p2,
     sbvToInt _ x <> 0%Z ->
@@ -2845,11 +2922,6 @@ Feq
 
   Admitted.
 
-  Search Vector.t.
-    Search shiftR1.
-
-  Print shiftR1.
-  Locate shiftout.
 
   (*
 

@@ -1538,3 +1538,11 @@ Admitted.
 Theorem twos_complement_equiv : forall n v,
     sbvToInt n (bvAdd n (bvXor n v (replicate n bool true)) (intToBv n 1)) = Z.opp (sbvToInt _ v).
 Admitted.
+
+Theorem intToBv_0_eq_replicate : forall n,
+    intToBv n 0 = replicate n bool false.
+Admitted.
+
+Theorem sawAt_nth_order_equiv : forall (A : Type)(inh : Inhabited A)(n1 n2 : nat)(v : Vec n1 A)(ltpf : (n2 < n1)%nat),
+  @sawAt n1 A inh v n2 = nth_order v ltpf.
+Admitted.
