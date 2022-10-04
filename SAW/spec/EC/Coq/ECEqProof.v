@@ -3264,6 +3264,56 @@ Feq
 
   Definition fiat_point_mul_gen := fiat_point_mul_gen Fsquare Fmul Fsub Fadd Fopp.
 
+  Theorem recode_rwnaf_bound_In : forall wsize numWindows x z,
+    (wsize <> 0)%nat ->
+    (numWindows <> 0)%nat ->
+    (BinInt.Z.of_nat x < BinInt.Z.shiftl 1 (BinInt.Z.of_nat (numWindows * wsize)))%Z ->
+    List.In z (recode_rwnaf wsize numWindows (Z.of_nat x)) ->
+    (-2^(Z.of_nat wsize) < z < (2^(Z.of_nat wsize)))%Z.
+
+    intros.
+    apply Z.abs_lt.
+    rewrite <- Z.shiftl_1_l.
+    eapply (@recode_rwnaf_correct wsize _ numWindows); eauto.
+
+    Unshelve.
+    lia.
+
+  Qed.
+
+  Theorem recode_rwnaf_bound_nth : forall n wsize numWindows x,
+    (wsize <> 0)%nat ->
+    (numWindows <> 0)%nat ->
+    (BinInt.Z.of_nat x < BinInt.Z.shiftl 1 (BinInt.Z.of_nat (numWindows * wsize)))%Z ->
+    (-2^(Z.of_nat wsize) < (List.nth n
+   (recode_rwnaf wsize numWindows (Z.of_nat x)) 0) < (2^(Z.of_nat wsize)))%Z.
+
+    intros.
+    destruct (PeanoNat.Nat.lt_decidable n numWindows).
+    eapply recode_rwnaf_bound_In; eauto.
+    apply nth_In.
+    rewrite recode_rwnaf_length; lia.
+
+    rewrite nth_overflow.
+    intuition idtac.
+    apply Z.opp_neg_pos.
+    apply Z.pow_pos_nonneg; lia.
+    apply Z.pow_pos_nonneg; lia.
+    rewrite recode_rwnaf_length; lia.
+
+  Qed.
+
+  Theorem In_tl : forall (A : Type)(ls : list A) a,
+    List.In a (List.tl ls) ->
+    List.In a ls.
+
+    intros.
+    destruct ls; simpl in *.
+    intuition idtac.
+    intuition idtac.
+
+  Qed.
+
   Theorem fiat_point_mul_gen_signedRegular_cases : forall wsize numWindows n p,
     1 < wsize < 16 ->
     (* sbvToInt _ n = bvToInt _ n -> *)
@@ -3396,11 +3446,42 @@ Feq
     apply nat_shiftl_gt_base.
     lia.
     lia.
-    admit.
-    admit.  
+    (* The last window is always non-negative*)
+    rewrite (@bvToNat_Z_to_nat_equiv _ _ (Z.div2 (List.nth (S (S numWindows))
+              (recode_rwnaf wsize (S (S (S numWindows))) (BinInt.Z.of_nat (bvToNat 384 n))) 0%Z))).
+    rewrite tableSize_correct.
+    unfold tableSize.
+    rewrite shiftl_to_nat_eq.
+    apply Znat.Z2Nat.inj_lt.
+    apply Z.div2_nonneg.
+    replace (S (S numWindows)) with (Nat.pred (List.length (recode_rwnaf wsize (S (S (S numWindows))) (BinInt.Z.of_nat (bvToNat 384%nat n))) )) at 1.
+    rewrite <- last_nth_equiv.
+    rewrite <- hd_rev_eq_last.
+    apply Z.ltb_ge; eauto.
+    rewrite recode_rwnaf_length.
     lia.
-    admit.
-    admit.
+    lia.
+    apply Z.shiftl_nonneg; lia.
+
+    apply div2_lt.
+    rewrite Z.shiftl_1_l.
+    rewrite <- Z.pow_succ_r.
+    rewrite <- Znat.Nat2Z.inj_succ.
+    replace (S (wsize - 1)) with wsize.
+    apply recode_rwnaf_bound_nth; try lia.
+    lia.
+    lia.
+    lia.
+
+    apply Z.div2_nonneg.
+    replace (S (S numWindows)) with (Nat.pred (List.length (recode_rwnaf wsize (S (S (S numWindows))) (BinInt.Z.of_nat (bvToNat 384%nat n))) )) at 1.
+    rewrite <- last_nth_equiv.
+    rewrite <- hd_rev_eq_last.
+    apply Z.ltb_ge; eauto.
+    rewrite recode_rwnaf_length.
+    lia.
+    lia.
+
     rewrite sbvToInt_sign_extend_16_64_equiv.
     erewrite bvSShr_Z_shiftr_equiv.
     symmetry.
@@ -3408,8 +3489,18 @@ Feq
     lia.
     apply sbvToInt_intToBv_id.
     (* windows are within range of word *)
-    admit.
-  
+    intuition idtac.
+    eapply Z.lt_le_incl.
+    eapply Z.le_lt_trans; [idtac | apply recode_rwnaf_bound_nth].
+    apply (@Z.opp_le_mono (2 ^ Z.of_nat wsize)%Z).
+    apply Z.pow_le_mono_r; lia.
+    lia.
+    lia.
+    lia.
+    eapply Z.lt_le_trans.
+    apply recode_rwnaf_bound_nth; try lia.
+    apply Z.pow_le_mono_r; lia.
+
     apply bvToNat_Z_to_nat_equiv.
     eapply Z.shiftr_nonneg.
     replace (List.nth (Nat.pred (S (S (S numWindows))))
@@ -3432,8 +3523,18 @@ Feq
     trivial.
     
     apply sbvToInt_intToBv_id.
-    (* valid windows *)
-    admit.
+     intuition idtac.
+    eapply Z.lt_le_incl.
+    eapply Z.le_lt_trans; [idtac | apply recode_rwnaf_bound_nth].
+    apply (@Z.opp_le_mono (2 ^ Z.of_nat wsize)%Z).
+    apply Z.pow_le_mono_r; lia.
+    lia.
+    lia.
+    lia.
+    eapply Z.lt_le_trans.
+    apply recode_rwnaf_bound_nth; try lia.
+    apply Z.pow_le_mono_r; lia.
+
     lia.
 
     rewrite hd_rev_eq_last.
@@ -3442,16 +3543,34 @@ Feq
     lia.
     trivial.
     (* table is not huge *)
-    admit.
+    erewrite <- Forall2_length_eq; [ idtac | eapply preCompTable_equiv].
+    rewrite tableSize_correct.
+    unfold tableSize.
+    rewrite shiftl_to_nat_eq.
+    rewrite ZifyInst.of_nat_to_nat_eq.
+    rewrite Z.shiftl_1_l.
+    rewrite Z.max_r.
+    apply Z.pow_lt_mono_r; lia.
+    apply Z.pow_nonneg; lia.
+    lia.
+    apply nat_shiftl_gt_base; lia.
+
     apply bvToNat_lt_word.
     reflexivity.
-    
+   
     rewrite bvToNat_toZ_equiv.
     apply forall2_symm.
     eapply forall2_trans.
     apply fiat_mul_scalar_rwnaf_gen_equiv.
     lia.
-    admit.
+    destruct (Z.lt_decidable (bvToInt 384%nat n) 0%Z).
+    eapply Z.lt_le_trans; eauto.
+    eapply Z.pow_nonneg; lia.
+    rewrite <- bvToNat_toZ_equiv.
+    rewrite <- Z.shiftl_1_l.
+    lia.
+    lia.
+  
     intros.
     assert (b0 = c).
     eapply H2.
@@ -3468,23 +3587,28 @@ Feq
     rewrite bvToNat_toZ_equiv.
     eapply fiat_mul_scalar_rwnaf_gen_equiv.
     lia.
-    admit.
+    rewrite <- Z.shiftl_1_l.
+    rewrite <- bvToNat_toZ_equiv.
+    lia.
  
     intros.  
     destruct wsize.
     trivial.
     lia.
     apply mul_body_equiv; trivial.
-    admit.
+    lia.
     subst.
-    (* use recode_rwnaf_correct to conclude size of value is correct *)
-    admit.
+    eapply (@recode_rwnaf_bound_In (S wsize) (S (S (S numWindows)))); try lia.
+    eauto.
+    apply in_rev.
+    apply In_tl.
+    eauto.
     rewrite rev_length.
     rewrite recode_rwnaf_length.
     lia.
     lia.
 
-  Admitted.
+  Qed.
 
 
   Theorem fiat_point_mul_gen_signedRegular_equiv : forall wsize numWindows n p,
