@@ -783,7 +783,6 @@ Theorem ne_false_impl_true : forall a,
 Qed.
 
 Theorem bvToNat_toZ_equiv : forall n x,
-  (0 <= bvToInt n x)%Z ->
   (BinInt.Z.of_nat (bvToNat n x)) = bvToInt n x.
 Admitted.
 

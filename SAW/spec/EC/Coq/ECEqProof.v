@@ -3563,12 +3563,8 @@ Feq
     eapply forall2_trans.
     apply fiat_mul_scalar_rwnaf_gen_equiv.
     lia.
-    destruct (Z.lt_decidable (bvToInt 384%nat n) 0%Z).
-    eapply Z.lt_le_trans; eauto.
-    eapply Z.pow_nonneg; lia.
     rewrite <- bvToNat_toZ_equiv.
     rewrite <- Z.shiftl_1_l.
-    lia.
     lia.
   
     intros.
