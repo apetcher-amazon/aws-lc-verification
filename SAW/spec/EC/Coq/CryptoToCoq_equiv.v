@@ -731,6 +731,12 @@ Theorem nth_order_append_l_eq : forall (A : Type)(inh : Inhabited A) n1 (v1 : Ve
   nth_order (append v2 v1) nlt2 = nth_order v2 nlt1.
 Admitted.
 
+Theorem nth_order_append_r_eq : forall (A : Type)(inh : Inhabited A) n1 (v1 : Vec n1 A) 
+  n2 (v2 : Vec n2 A)  n' (nlt2 : (n' < addNat n2 n1)%nat) (nlt1 : (n'-n2 < n1)%nat),
+  (n' >= n2)%nat ->
+  nth_order (append v2 v1) nlt2 = nth_order v1 nlt1.
+Admitted.
+
 Theorem nth_order_drop_eq : forall (A : Type)(inh : Inhabited A) n1 n2 (v : Vec (addNat n1 n2) A)
   n' (lt1 : (addNat n1 n' < addNat n1 n2)%nat)(lt2 : (n' < n2)%nat),
   nth_order (drop _ n1 n2 v) lt2 = nth_order v lt1.
@@ -1363,6 +1369,19 @@ Theorem Forall2_nth : forall (A B : Type)(P : A -> B -> Prop) lsa lsb,
 
 Qed.
 
+Theorem Forall2_nth_lt : forall (A B : Type)(P : A -> B -> Prop) lsa lsb,
+  List.Forall2 P lsa lsb ->
+  forall n defA defB,
+  (n < List.length lsa)%nat ->
+  P (List.nth n lsa defA) (List.nth n lsb defB).
+
+  induction 1; intros; simpl in *.
+  destruct n; try lia.
+  destruct n; trivial.
+  eapply IHForall2; trivial; lia.
+
+Qed.
+
 Theorem bvNat_Z_to_nat_eq_intToBv : forall n (z : Z),
   (0 <= z)%Z ->
   bvNat n (Z.to_nat z) = intToBv n z.
@@ -1483,7 +1502,7 @@ Theorem intToBv_eq_pos : forall n x y,
 Admitted.
 
 Theorem bvToNat_lt_word : forall n x,
-    (Z.of_nat (bvToNat n x)) < 2^64.
+    (Z.of_nat (bvToNat n x)) < 2^(Z.of_nat n).
 Admitted.
 
 (*
@@ -1564,10 +1583,6 @@ Theorem sbvToInt_nz_nth : forall n (v : Vec n _) n' (nlt : (n' < n)%nat),
 
 Admitted.
 
-Print shiftR1.
-Print shiftR.
-Search shiftR.
-
 Theorem shiftR_shiftR_eq : forall (A : Type)(n1 n2 len : nat)(v : Vec len A) a,
     shiftR _ _ a (shiftR _ _ a v n1) n2 = shiftR _ _ a v (n1 + n2)%nat.
 Admitted.
@@ -1586,5 +1601,16 @@ Theorem sbvToInt_neg_bits_set : forall n wsize b2 n' (ltpf : (n' < n)%nat),
     (n' <= n - wsize)%nat ->
     (- 2 ^ Z.of_nat wsize <= sbvToInt n b2 < 0)%Z ->
     nth_order b2 ltpf = true.
+Admitted.
+
+Theorem sbvToInt_nonneg_bits_clear : forall n wsize b2 n' (ltpf : (n' < n)%nat),
+    (n' <= n - wsize)%nat ->
+    (0 <= sbvToInt n b2 < 2 ^ Z.of_nat wsize )%Z ->
+    nth_order b2 ltpf = false.
+Admitted.
+
+Theorem sbvToInt_z_nth:
+  forall [n : nat] (v : Vec n bool),
+  (forall [n' : nat] (nlt : (n' < n)%nat), nth_order v nlt = false) -> sbvToInt n v = 0%Z.
 Admitted.
 

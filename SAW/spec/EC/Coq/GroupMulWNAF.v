@@ -15,6 +15,48 @@ Require Import SetoidClass.
 
 From Top Require Import Zfacts.
 
+Theorem nat_shiftl_nz : forall n b,
+  (0 < b)%nat ->
+  (0 < shiftl b n)%nat.
+
+  induction n; intros; simpl in *.
+  lia.
+  unfold double.
+  specialize (IHn b).
+  lia.
+  
+Qed.
+
+Theorem Z_shiftl_1 : forall z,
+  Z.shiftl z 1 = Z.double z.
+
+  intuition.
+
+Qed.
+
+Theorem shiftl_to_nat_eq : forall n2 n1,
+  (shiftl n1 n2) = Z.to_nat (Z.shiftl (Z.of_nat n1) (Z.of_nat n2)).
+
+  induction n2; intros.
+  simpl. lia.
+  rewrite Znat.Nat2Z.inj_succ.
+  simpl.
+  rewrite IHn2.
+  rewrite <- Z.add_1_r.
+  rewrite <- Z.shiftl_shiftl.
+  rewrite Z_shiftl_1.
+  rewrite Z.double_spec.
+  rewrite Znat.Z2Nat.inj_mul.
+  unfold double.
+  simpl.
+  lia.
+  lia.
+  apply Z.shiftl_nonneg.
+  lia.
+  lia.
+  
+Qed.
+
 Section GroupMulWNAF.
 
   Variable GroupElem : Type.
@@ -605,13 +647,6 @@ Section GroupMulWNAF.
     rewrite groupInverse_add_distr.
     reflexivity.
     
-  Qed.
-
-  Theorem Z_shiftl_1 : forall z,
-    Z.shiftl z 1 = Z.double z.
-
-    intuition.
-
   Qed.
 
   Theorem zDouble_n_S : forall n z,
@@ -1628,6 +1663,36 @@ Section GroupMulWNAF.
 
   Definition preCompTable x := preCompTable_h (pred tableSize) (x::nil) (groupDouble x).
 
+  Theorem fold_app_length : forall (A B : Type) f (ls : list B) (acc : list A),
+    length (fold_left (fun x y => x ++ ((f x y)::nil)) ls acc) = (List.length ls + List.length acc)%nat.
+  
+    induction ls; intros; simpl in *.
+    trivial.
+    rewrite IHls.
+    rewrite app_length.
+    simpl.
+    lia.
+  Qed.
+
+  Theorem tableSize_correct : forall x, 
+      List.length (preCompTable x)  = tableSize.
+
+    intros.
+    unfold preCompTable, preCompTable_h.
+    rewrite fold_app_length.
+    rewrite forNats_length.
+    simpl.
+    unfold tableSize.
+    destruct wsize; try lia; simpl.
+    repeat rewrite Nat.sub_0_r.
+    assert (0 < shiftl 1 n)%nat.
+    apply nat_shiftl_nz.
+    lia.
+    lia.
+
+  Qed.
+
+
   Theorem last_nth_equiv : forall (A : Type)(def : A)(ls : list A),
     last ls def = nth (pred (length ls)) ls def.
 
@@ -1800,30 +1865,6 @@ Section GroupMulWNAF.
 
     trivial.
 
-  Qed.
-
-
-  Theorem shiftl_to_nat_eq : forall n2 n1,
-    (shiftl n1 n2) = Z.to_nat (Z.shiftl (Z.of_nat n1) (Z.of_nat n2)).
-
-    induction n2; intros.
-    simpl. lia.
-    rewrite Znat.Nat2Z.inj_succ.
-    simpl.
-    rewrite IHn2.
-    rewrite <- Z.add_1_r.
-    rewrite <- Z.shiftl_shiftl.
-    rewrite Z_shiftl_1.
-    rewrite Z.double_spec.
-    rewrite Znat.Z2Nat.inj_mul.
-    unfold double.
-    simpl.
-    lia.
-    lia.
-    apply Z.shiftl_nonneg.
-    lia.
-    lia.
-    
   Qed.
 
 
@@ -2006,6 +2047,22 @@ Section GroupMulWNAF.
     lia.
     lia.
 
+  Qed.
+
+  Theorem shiftr_window_small_Z : forall z,
+    0 <= z < Z.shiftl 1 (Z.of_nat wsize) ->
+    (Z.to_nat (Z.shiftr z 1) < tableSize)%nat.
+
+    intros.
+    destruct z.
+    unfold tableSize.
+    simpl.
+    apply nat_shiftl_nz.
+    lia.
+
+    apply shiftr_window_small; intuition idtac.
+
+    lia.
   Qed.
 
   Theorem signedMul_table_correct : forall e (t : list GroupElem) x,

@@ -2987,12 +2987,31 @@ Feq
     lia.
     
   Qed.
+  
+  Theorem div2_lt : forall x y ,
+    (x < 2*y ->
+    Z.div2 x < y)%Z.
+
+    intros.
+    rewrite Z.div2_div.
+    apply Z.div_lt_upper_bound; lia.
+
+  Qed.
+
+  Theorem Forall2_length_eq : forall (A B : Type)(lsa : list A)(lsb : list B) P,
+    List.Forall2 P lsa lsb ->
+    List.length lsa = List.length lsb.
+
+    induction 1; intros; simpl in *; intuition idtac.
+    congruence.
+
+  Qed.
 
   Theorem mul_body_equiv : forall pred_wsize p a1 a2 b1 b2,
     0 < pred_wsize < 15 ->
     jac_eq (fromPoint a1) (seqToProd a2) ->
     b1 = sbvToInt 16 b2 ->
-    (- 2 ^ Z.of_nat (S pred_wsize) <= b1 < 2 ^ Z.of_nat (S pred_wsize))%Z ->
+    (- 2 ^ Z.of_nat (S pred_wsize) < b1 < 2 ^ Z.of_nat (S pred_wsize))%Z ->
     jac_eq
   (fromPoint
      (groupMul_signedWindows_fold_body Jacobian.add Jacobian.double
@@ -3057,31 +3076,63 @@ Feq
     apply (@sbvToInt_neg_bits_set _  (pred_wsize + 1)%nat).
     lia.
     rewrite PeanoNat.Nat.add_1_r.
-    intuition idtac.
+    lia.
     lia.
 
     match goal with
     | [|- jac_eq (fromPoint (List.nth ?a _ _)) (seqToProd (List.nth ?b _ _))] =>
       replace a with b
     end.
-    eapply (@Forall2_nth _ _ (fun a b => jac_eq (fromPoint a) (seqToProd b))).
+    eapply (@Forall2_nth_lt _ _ (fun a b => jac_eq (fromPoint a) (seqToProd b))).
     apply preCompTable_equiv.
     unfold tableSize.
     simpl.
     rewrite NPeano.Nat.sub_0_r.
     apply nat_shiftl_gt_base; lia.
-    eapply jac_eq_refl_gen.
-    simpl. unfold zero_point_h.
-    admit.
-
-    eapply bvToNat_Z_to_nat_equiv.
-    apply Z.shiftr_nonneg.
-    apply Z.abs_nonneg.
+    
+    rewrite (@bvToNat_Z_to_nat_equiv _ _ (Z.div2 (Z.abs (sbvToInt _ b2)))).
+    rewrite tableSize_correct.
+    unfold tableSize.
+    simpl.
+    rewrite PeanoNat.Nat.sub_0_r.
+    replace (Nat.shiftl 1 pred_wsize) with (Z.to_nat (2^(Z.of_nat pred_wsize))).
+    apply Znat.Z2Nat.inj_lt.
+    apply Z.div2_nonneg.
+    lia.
+    apply Z.pow_nonneg; lia.
+    apply div2_lt.
+    rewrite <- Z.pow_succ_r.
+    apply Z.abs_lt.
+    rewrite <- Znat.Nat2Z.inj_succ.
+    trivial.
+    lia.
+    rewrite shiftl_to_nat_eq.
+    rewrite Z.shiftl_1_l.
+    reflexivity.
+    lia.
+    apply Z.div2_nonneg.
+    lia.
+    
     rewrite sbvToInt_sign_extend_16_64_equiv.
-    apply bvSShr_Z_shiftr_equiv.
+    erewrite bvSShr_Z_shiftr_equiv; [idtac | idtac | erewrite ct_abs_equiv]; eauto.
+    rewrite Z.div2_spec.
+    reflexivity.
+    intuition idtac.
+    apply Z.lt_le_incl.
     trivial.
-    apply ct_abs_equiv.
-    trivial.
+
+    rewrite (@bvToNat_Z_to_nat_equiv _ _ (Z.div2 (Z.abs (sbvToInt _ b2)))).
+    rewrite Z.div2_spec.
+    reflexivity.
+    apply Z.div2_nonneg.
+    lia.
+
+    rewrite sbvToInt_sign_extend_16_64_equiv.
+    erewrite bvSShr_Z_shiftr_equiv; [idtac | idtac | erewrite ct_abs_equiv]; eauto.
+    rewrite Z.div2_spec.
+    reflexivity.
+    intuition idtac.
+    apply Z.lt_le_incl.
     trivial.
 
     eapply jac_eq_trans.
@@ -3101,17 +3152,57 @@ Feq
     simpl.
     
     (* shiftR produces all 0 *)
-    admit.
+    apply sbvToInt_z_nth. intros.
+    rewrite shiftR1_eq.
+    rewrite shiftR_shiftR_eq.
+    destruct (Compare_dec.dec_lt n' 48).
+    erewrite (@nth_order_append_l_eq _ _ 16 _ 48).
+    apply nth_order_0.
+    erewrite (@nth_order_append_r_eq _ _ 16 _ 48).
+    destruct (Compare_dec.dec_lt n' 63).
+    apply nth_order_bvAnd_l_eq.
+    lia.
+    assert (n' = 63).
+    lia.
+    subst.
+    rewrite nth_order_bvAnd_eq.
+    erewrite nth_order_shiftR_eq.
+    eapply (@sbvToInt_nonneg_bits_clear _ (pred_wsize + 1)).
+    lia.
+    lia.
+    lia.
+    lia.
 
     match goal with
     | [|- jac_eq (fromPoint (List.nth ?a _ _)) (seqToProd (List.nth ?b _ _))] =>
       replace a with b
     end.
-    eapply (@Forall2_nth _ _ (fun a b => jac_eq (fromPoint a) (seqToProd b))).
+    eapply (@Forall2_nth_lt _ _ (fun a b => jac_eq (fromPoint a) (seqToProd b))).
     apply preCompTable_equiv.
-    admit.
-    (* need to use (0, 1, 0) *)
-    admit.
+    apply nat_shiftl_gt_base;
+    lia.
+    
+    rewrite (@bvToNat_Z_to_nat_equiv _ _ (Z.div2 (Z.abs (sbvToInt _ b2)))).
+    rewrite Z.div2_spec.
+    rewrite tableSize_correct.
+    unfold tableSize.
+    apply shiftr_window_small_Z.
+    lia.
+    intuition idtac.
+    lia.
+    apply Z.abs_lt.
+    intuition idtac.
+    lia.
+    apply Z.div2_nonneg.
+    lia.
+
+    rewrite sbvToInt_sign_extend_16_64_equiv.
+    erewrite bvSShr_Z_shiftr_equiv; [idtac | idtac | erewrite ct_abs_equiv]; eauto.
+    rewrite Z.div2_spec.
+    reflexivity.
+    intuition idtac.
+    apply Z.lt_le_incl.
+    trivial.
 
     eapply bvToNat_Z_to_nat_equiv.
     apply Z.shiftr_nonneg.
@@ -3120,22 +3211,61 @@ Feq
     apply bvSShr_Z_shiftr_equiv.
     trivial.
     apply ct_abs_equiv.
+    intuition idtac.
+    apply Z.lt_le_incl; eauto.
     trivial.
-    trivial.
-  Admitted.
-   
+
+    erewrite <- Forall2_length_eq; [idtac | eapply preCompTable_equiv].
+    rewrite tableSize_correct.
+    unfold tableSize.
+    rewrite shiftl_to_nat_eq.
+    rewrite Z.shiftl_1_l.
+    rewrite ZifyInst.of_nat_to_nat_eq.
+    rewrite Z.max_r.
+    apply Z.pow_lt_mono_r;
+    lia.
+    apply Z.pow_nonneg; lia.
+    lia.
+    unfold tableSize.
+    apply nat_shiftl_gt_base.
+    lia.
+    lia.
+
+    apply bvToNat_lt_word.
+
+    Unshelve.
+    lia.
+    lia.
+    lia.
+
+  Qed.
+
+
+  Theorem scanl_head : forall (A B : Type)(f : A -> B -> A)ls acc def,
+      List.hd def (CryptoToCoq_equiv.scanl f ls acc) = acc.
+
+    intros.
+    destruct ls; reflexivity.
+
+  Qed.
+
 
   Theorem fiat_pre_comp_table_gen_nth_0  : forall wsize p def,
     List.nth 0 (EC_fiat_P384_gen.fiat_pre_comp_table_gen Fsquare Fmul
               Fsub Fadd (Nat.pred (Nat.pred (tableSize wsize)))
               p) def = p.
+  
+    intros.
+    unfold EC_fiat_P384_gen.fiat_pre_comp_table_gen.
+    rewrite nth_0_hd_equiv.
+    apply scanl_head.
 
-  Admitted.
+  Qed.
 
   Definition fiat_point_mul_gen := fiat_point_mul_gen Fsquare Fmul Fsub Fadd Fopp.
 
   Theorem fiat_point_mul_gen_signedRegular_cases : forall wsize numWindows n p,
-    0 < wsize < 16 ->
+    1 < wsize < 16 ->
     (* sbvToInt _ n = bvToInt _ n -> *)
     (BinInt.Z.of_nat (bvToNat 384%nat n) <
  BinInt.Z.shiftl 1 (BinInt.Z.of_nat (S (S (S numWindows)) * wsize)))%Z->
@@ -3260,10 +3390,24 @@ Feq
     | [|- jac_eq (fromPoint (List.nth ?a _ _ )) (seqToProd (List.nth ?b _ _ ))] =>  
       replace a with b
     end.
-    eapply (@Forall2_nth _ _ (fun a b => jac_eq (fromPoint a) (seqToProd b))).
+    eapply (@Forall2_nth_lt _ _ (fun a b => jac_eq (fromPoint a) (seqToProd b))).
     apply preCompTable_equiv.
+    unfold tableSize.
+    apply nat_shiftl_gt_base.
+    lia.
+    lia.
     admit.
-    (* need to use (0, 1, 0) *)
+    admit.  
+    lia.
+    admit.
+    admit.
+    rewrite sbvToInt_sign_extend_16_64_equiv.
+    erewrite bvSShr_Z_shiftr_equiv.
+    symmetry.
+    apply Z.div2_spec.
+    lia.
+    apply sbvToInt_intToBv_id.
+    (* windows are within range of word *)
     admit.
   
     apply bvToNat_Z_to_nat_equiv.
@@ -3344,7 +3488,7 @@ Feq
 
 
   Theorem fiat_point_mul_gen_signedRegular_equiv : forall wsize numWindows n p,
-    0 < wsize < 16 ->
+    1 < wsize < 16 ->
     (* sbvToInt _ n = bvToInt _ n -> *)
     (BinInt.Z.of_nat (bvToNat 384%nat n) <
  BinInt.Z.shiftl 1 (BinInt.Z.of_nat (S (S (S numWindows)) * wsize)))%Z->
@@ -3426,7 +3570,7 @@ Feq
 
 
   (* If we want to prove that the generic multiplication operation is correct, we need a group on generic points. *)
-  (* probably sufficient to prove the fiat representation multiplcation operation is correct *)
+  (* probably sufficient to prove the fiat representation multiplication operation is correct *)
 
 (*
 
