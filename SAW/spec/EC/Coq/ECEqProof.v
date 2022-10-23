@@ -938,7 +938,13 @@ Section ECEqProof.
   Definition W_opp : wpoint -> wpoint := W.opp.
 
   (* Discriminant is non-zero *)
-  (* Can we simplify this assumption because a=-3 *)
+  (* Can we simplify this assumption because a=-3? *)
+  (* Should be b <> 2 /\ b <> -2 --- See if there is something in Fiat for this *)
+    
+(* when a = -3, 
+    4 * (-27) + 27b^2 <> 0
+    b^2 <> 4
+    *)
   Hypothesis discriminant_nonzero : 
     ~
 Feq
@@ -2737,6 +2743,7 @@ Feq
     apply Pos2Z.opp_neg.
     intuition idtac.
     lia.
+    lia.
 
   Qed.
 
@@ -3685,6 +3692,8 @@ Feq
     trivial.
 
   Qed.
+
+  Print Assumptions point_mul_correct.
 
 
 

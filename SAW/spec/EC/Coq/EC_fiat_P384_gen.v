@@ -52,8 +52,6 @@ Local Arguments bvSub [n] _ _.
 Local Arguments SAWCorePrelude.map [a]%type_scope {Inh_a} [b]%type_scope f%function_scope _ _.
 
 
-
-
 Definition fiat_mul_scalar_rwnaf_odd_loop_body_gen (wsize : nat)(s : bitvector 384) :=
 (drop Bool 368 16
    (bvSub
