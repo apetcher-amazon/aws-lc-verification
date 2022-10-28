@@ -829,6 +829,37 @@ Theorem bvAnd_append : forall n1 n2 (v1a v1b : Vec n1 _) (v2a v2b : Vec n2 _),
   apply bvZipWith_append.
 Qed.
 
+Theorem bvZipWith_append' : forall f n1 n2 (v1a v1b : Vec n1 _) (v2a v2b : Vec n2 _),
+  bvZipWith f _ (Vector.append v1a v2a) (Vector.append v1b v2b) = 
+  Vector.append (bvZipWith f _ v1a v1b) (bvZipWith f _ v2a v2b).
+
+  induction n1; intros; simpl in *.
+  rewrite (@Vec_0_nil _ v1a).
+  rewrite (@Vec_0_nil _ v1b).
+  reflexivity.
+
+  destruct (Vec_S_cons v1a).
+  destruct H.
+  destruct (Vec_S_cons v1b).
+  destruct H0.
+  subst.
+  simpl.
+  repeat rewrite bvZipWith_cons.
+  rewrite IHn1.
+  reflexivity.
+
+Qed.
+
+Theorem bvAnd_append' : forall n1 n2 (v1a v1b : Vec n1 _) (v2a v2b : Vec n2 _),
+  bvAnd (Vector.append v1a v2a) (Vector.append v1b v2b) = 
+  Vector.append (bvAnd v1a v1b) (bvAnd v2a v2b).
+
+  intros.
+  apply bvZipWith_append'.
+
+Qed.
+
+
 Theorem Vec_addNat_append : forall (A : Type)(inh : Inhabited A) n1 n2 (v : Vec (addNat n1 n2) A),
   exists v1 v2,
   v = append v1 v2.
@@ -894,6 +925,11 @@ Qed.
 Theorem intToBv_1_append_eq : forall n1 n2,
   (n1 > 0)%nat ->
   append (intToBv n2 0) (intToBv n1 1) = intToBv (addNat n2 n1) 1.
+Admitted.
+
+Theorem intToBv_1_append_eq' : forall n1 n2,
+  (n1 > 0)%nat ->
+  Vector.append (intToBv n2 0) (intToBv n1 1) = intToBv (n2 + n1)%nat 1.
 Admitted.
 
 Theorem empty_Vec_eq : forall (A : Type)(v1 v2 : Vec O A),
@@ -2342,15 +2378,62 @@ Theorem bvAnd_bitsToBv_eq : forall n v1 v2,
   
 Qed.
 
+Theorem bvAnd_replicate_1 : forall n v,
+  bvAnd (replicate n _ true) v = v.
 
-(* This doesn't look right.
-In BITS, consB b v means that b is the lsb, and the conversion from bit vectors also uses this order.
-So a numeric right shift should be a left shift using this representation. 
-Maybe this is a bug in the Cryptol->Coq extraction mechanism?
-*)
+  induction v; intros; simpl in *.
+  apply vec_0_eq.
+  rewrite replicate_S_cons.
+  unfold bvAnd, bvZipWith.
+  rewrite zipWith_cons.
+  simpl.
+  f_equal.
+  eapply IHv.
+Qed.
+
+
+Theorem vec_split_append_eq : forall (A : Type) n1 n2  (v : Vec (n1 + n2) A),
+  Vector.append (fst (Vector.splitat n1 v)) (snd (splitat n1 v)) = v.
+Admitted.
+
+Theorem nth_order_eq_impl_eq : forall (A : Type) n (v1 v2 : Vec n A),
+  (forall n1 (n1lt : (n1 < n)%nat), nth_order v1 n1lt = nth_order v2 n1lt) ->
+  v1 = v2.
+
+  intros.
+  apply Vector.eq_nth_iff.
+  intros.
+  subst.
+  unfold nth_order in *.
+  rewrite <- (@Fin.of_nat_to_nat_inv _ p2).
+  eapply H.
+Qed.
 
 Theorem bvAnd_shiftR_small_neg : forall n1 n2 v,
   (-2^(Z.of_nat n2) <= sbvToInt _ v < 0)%Z ->
   (bvAnd (shiftR n1 bool false v n2) (intToBv _ 1)) = intToBv _ 1.
+
+  intros.
+
+  destruct (eq_nat_dec n1 0%nat).
+  subst.
+  apply vec_0_eq.
+
+  assert (exists n1', n1 = n1'  + 1)%nat.
+  destruct n1.
+  lia.
+  exists n1.
+  lia.
+
+  destruct H0.
+  subst.
+
+  rewrite <- intToBv_1_append_eq'.
+  rewrite <- (vec_split_append_eq _ _ (shiftR  (x + 1)%nat bool false v n2)).
+  rewrite bvAnd_append'.
+  f_equal.
+  apply bvAnd_0.
+
+
 
 Admitted.

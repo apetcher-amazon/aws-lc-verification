@@ -2,16 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 
 
-FROM ocaml/opam:ubuntu-20.04
-USER root
+FROM ubuntu:20.04
 RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections
 RUN apt-get update
-RUN apt-get install -y wget unzip git cmake clang llvm golang python3-pip libncurses5 quilt opam libgmp-dev
+RUN apt-get install -y wget unzip git cmake clang llvm golang python3-pip libncurses5
 RUN pip3 install wllvm
-RUN opam init
-RUN opam install coq.8.13.2
-RUN opam repo add coq-released https://coq.inria.fr/opam/released
-RUN opam install coq-bits
 
 ADD ./SAW/scripts /lc/scripts
 RUN /lc/scripts/install.sh
