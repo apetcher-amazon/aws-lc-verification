@@ -16,6 +16,7 @@ Require Import Bool.
 Require Import micromega.Lia.
 Require Import ZArith.BinInt.
 Require Import SetoidClass.
+Require Import Permutation.
 
 From EC Require Import Zfacts.
 
@@ -687,6 +688,665 @@ Section GroupMulWNAF.
 
   Qed.
 
+  Fixpoint groupMul_signedWindows_exp (ws : list SignedWindow) n : GroupElem :=
+  match ws with
+  | nil => idElem
+  | w :: ws' => groupAdd (groupMul_doubleAdd_signed (zDouble_n (n * wsize) w) p) (groupMul_signedWindows_exp ws' (S n))
+  end.
+
+  Theorem groupDouble_n_add : forall n1 n2 e,
+    groupDouble_n (n1 + n2) e = groupDouble_n n1 (groupDouble_n n2 e).
+
+    induction n1; intros; simpl in *.
+    reflexivity.
+    rewrite IHn1.
+    reflexivity.
+  Qed.
+
+  Theorem groupAdd_groupDouble_n_distr : forall n e1 e2,
+    groupAdd (groupDouble_n n e1) (groupDouble_n n e2) == groupDouble_n n (groupAdd e1 e2).
+
+    induction n; intros; simpl in *.
+    reflexivity.
+    rewrite <- groupDouble_distrib.
+    rewrite <- IHn.
+    reflexivity.
+
+  Qed.
+
+  Theorem groupDouble_n_id : forall n,
+    groupDouble_n n idElem == idElem.
+
+    induction n; intros; simpl in *.
+    reflexivity.
+    rewrite IHn.
+    rewrite groupDouble_correct.
+    apply groupAdd_id.
+
+  Qed.
+
+  Theorem groupMul_signedWindows_exp_equiv : forall ws n,
+    Forall RegularWindow ws ->
+    groupDouble_n (wsize * n) (groupMul_signedWindows ws) == groupMul_signedWindows_exp ws n.
+
+    induction ws; intros; simpl in *.
+    apply groupDouble_n_id.
+
+    unfold groupAdd_signedWindow.
+    rewrite <- IHws.
+    rewrite zDouble_n_mul.
+    replace (wsize * S n)%nat with (n * wsize + wsize)%nat; try lia.
+    rewrite groupDouble_n_add.
+    rewrite groupAdd_groupDouble_n_distr.
+    replace (wsize * n)%nat with (n * wsize)%nat; try lia.
+    apply groupDouble_n_equiv_compat.
+    apply groupAdd_proper.
+    apply bMultiple_correct.
+    inversion H; clear H; subst.
+    trivial.
+    reflexivity.
+    inversion H; trivial.
+  Qed.
+
+  Inductive WindowedMultiplication :=
+    | wm_Add : nat -> Z -> WindowedMultiplication
+    | wm_Double : nat -> WindowedMultiplication.
+
+  Definition evalWindowMult (m : WindowedMultiplication)(e : GroupElem) :=
+    match m with
+    | wm_Add n w => (groupAdd (groupMul_doubleAdd_signed (zDouble_n (n * wsize) w) p) e)
+    | wm_Double n => (groupDouble_n (n * wsize) e)
+    end.
+
+  Theorem evalWindowMult_compat : forall m e1 e2,
+    e1 == e2 ->
+    evalWindowMult m e1 == evalWindowMult m e2.
+
+    intros.
+    unfold evalWindowMult.
+    destruct m.
+    apply groupAdd_proper.
+    reflexivity.
+    trivial.
+    apply groupDouble_n_equiv_compat.
+    trivial.
+
+  Qed.
+
+  Fixpoint groupMul_signedWindows_prog (ws : list WindowedMultiplication) : GroupElem :=
+    match ws with
+    | nil => idElem
+    | w :: ws' => evalWindowMult w (groupMul_signedWindows_prog ws')
+    end.
+
+  Fixpoint signedWindowsToProg (ws : list SignedWindow)(n : nat) :=
+    match ws with
+    | nil => nil
+    | w :: ws' => (wm_Add n w) :: (signedWindowsToProg ws' (S n))
+    end.
+
+  Theorem groupMul_signedWindows_prog_equiv : forall ws n,
+    groupMul_signedWindows_prog (signedWindowsToProg ws n) == groupMul_signedWindows_exp ws n.
+
+    induction ws; intros; simpl in *.
+    reflexivity.
+    rewrite IHws.
+    reflexivity.
+
+  Qed.
+
+  (* Operations that preserve the value *)
+
+  (* Insert a double at the head of the list and adjust exponents on remaining items *)
+  Definition decrExp (n : nat)(p : WindowedMultiplication) :=
+    match p with
+    | wm_Add n' w =>
+      if (le_dec n n') then (Some (wm_Add (n' - n) w)) else None
+    | wm_Double n' => Some (wm_Double n')
+    end.
+
+  Fixpoint decrExpLs (n : nat)(ps : list WindowedMultiplication) :=
+    match ps with
+    | nil => Some nil
+    | p :: ps' =>
+      match (decrExp n p) with
+      | None => None
+      | Some p' => 
+        match (decrExpLs n ps') with
+        | None => None
+        | Some ps'' =>
+          Some (p' :: ps'')
+        end
+      end
+    end.
+
+  Definition insertDouble n ps :=
+    match (decrExpLs n ps) with
+    | Some ps' => Some ((wm_Double n) :: ps')
+    | None => None
+    end.
+
+  Theorem evalWindowMult_double_equiv : forall n a w e,
+    (decrExp n a) = Some w ->
+    evalWindowMult a (groupDouble_n (n * wsize) e) == groupDouble_n (n * wsize) (evalWindowMult w e).
+
+    intros.
+    unfold decrExp, evalWindowMult in *.
+    destruct a.
+    destruct (le_dec n n0).
+    inversion H; clear H; subst.
+    rewrite zDouble_n_mul.
+    assert (exists m, n + m = n0)%nat.
+    exists (n0 - n)%nat.
+    lia.
+    destruct H. subst.
+    rewrite Nat.mul_add_distr_r.
+    rewrite groupDouble_n_add.
+    rewrite groupAdd_groupDouble_n_distr.
+    apply groupDouble_n_equiv_compat.
+    apply groupAdd_proper.
+    rewrite zDouble_n_mul.
+    replace (n + x - n)%nat with x.
+    reflexivity.
+    lia.
+    reflexivity.
+    discriminate.
+
+    inversion H; clear H; subst.
+    rewrite <- groupDouble_n_add.
+    rewrite plus_comm.
+    rewrite groupDouble_n_add.
+    reflexivity.
+
+  Qed.
+
+  Theorem insertDouble_equiv_h : forall n ps ps',
+    Some ps' = decrExpLs n ps ->
+    groupMul_signedWindows_prog ps == groupDouble_n (n * wsize) (groupMul_signedWindows_prog ps').
+
+    induction ps; intros; simpl in *.
+    inversion H; clear H; subst.
+    simpl.
+    rewrite groupDouble_n_id.
+    reflexivity.
+    remember (decrExp n a) as z1. destruct z1.
+    remember (decrExpLs n ps) as z2. destruct z2.
+    inversion H; clear H; subst.
+    simpl.
+    transitivity (evalWindowMult a (groupDouble_n (n * wsize) (groupMul_signedWindows_prog l))).
+    eapply evalWindowMult_compat; eauto.
+    eapply evalWindowMult_double_equiv.
+    symmetry.
+    trivial.
+    discriminate.
+    discriminate.
+  Qed.
+
+  Theorem insertDouble_equiv : forall n ps ps',
+    (insertDouble n ps) = Some ps' -> 
+    groupMul_signedWindows_prog ps == groupMul_signedWindows_prog ps'.
+
+    intros.
+    unfold insertDouble in *.
+    remember (decrExpLs n ps) as z.
+    destruct z.
+    inversion H; clear H; subst.
+    simpl.
+    eapply insertDouble_equiv_h; eauto.
+    discriminate.
+  Qed.
+
+  Definition swapPair p1 p2 :=
+    match p1 with
+    | wm_Add n1 z1 =>
+      match p2 with
+      | wm_Add n2 z2 => Some (p2, p1)
+      | wm_Double n2 => 
+        if (le_dec n2 n1) then Some (p2, (wm_Add (n1 - n2) z1)) else None
+      end
+    | wm_Double n1 =>
+      match p2 with
+      | wm_Add n2 z2 => Some ((wm_Add (n1 + n2) z2),  p1)
+      | wm_Double n2 => Some (p2, p1)
+      end
+    end.
+
+  Definition swapFront ps := 
+    match ps with 
+    | nil => None
+    | p1 :: ps' =>
+      match ps' with
+      | nil => None
+      | p2 :: ps'' =>
+        match (swapPair p1 p2) with
+        | None => None
+        | Some (a, b) => Some (a :: b ::  ps'')
+        end
+      end
+    end.
+
+  Theorem swapFront_equiv_h : forall w w0 w1 w2 ps,
+    Some (w1, w2) = swapPair w w0 ->
+    groupMul_signedWindows_prog (w :: w0 :: ps) == groupMul_signedWindows_prog (w1 :: w2 :: ps).
+
+    intros.
+    simpl.
+    unfold swapPair in *.
+    destruct w.
+    destruct w0.
+    inversion H; clear H; subst.  
+    unfold evalWindowMult. 
+    repeat rewrite <- groupAdd_assoc.
+    apply groupAdd_proper.
+    apply groupAdd_comm.
+    reflexivity.
+
+    destruct (le_dec n0 n).
+    inversion H; clear H; subst.
+    assert (exists n1, n1 + n0 = n)%nat.
+    exists (n - n0)%nat.
+    lia.
+    destruct H.
+    subst.
+    replace (x + n0 - n0)%nat with x.
+    unfold evalWindowMult.
+    rewrite zDouble_n_mul.
+    rewrite Nat.mul_add_distr_r.
+    rewrite plus_comm.
+    rewrite groupDouble_n_add.
+    rewrite groupAdd_groupDouble_n_distr.
+    apply groupDouble_n_equiv_compat.
+    apply groupAdd_proper.
+    rewrite zDouble_n_mul.
+    reflexivity.
+    reflexivity.
+    lia.
+    discriminate.
+
+    destruct w0.
+    inversion H; clear H; subst.
+    unfold evalWindowMult.
+    symmetry.
+    rewrite zDouble_n_mul.
+    rewrite Nat.mul_add_distr_r.
+    rewrite groupDouble_n_add.
+    rewrite groupAdd_groupDouble_n_distr.
+    apply groupDouble_n_equiv_compat.
+    apply groupAdd_proper.
+    rewrite zDouble_n_mul.
+    reflexivity.
+    reflexivity.
+
+    inversion H; clear H; subst.
+    unfold evalWindowMult.
+    rewrite <- groupDouble_n_add.
+    rewrite plus_comm.
+    rewrite groupDouble_n_add.
+    reflexivity.
+
+  Qed.
+
+  Theorem swapFront_equiv : forall ps ps',
+    (swapFront ps) = Some ps' -> 
+    groupMul_signedWindows_prog ps == groupMul_signedWindows_prog ps'.
+
+    intros.
+    unfold swapFront in *.
+    destruct ps.
+    discriminate.
+    destruct ps.
+    discriminate.
+    remember (swapPair w w0) as z.
+    destruct z.
+    destruct p0.
+    inversion H; clear H; subst.
+    simpl.
+    apply swapFront_equiv_h.
+    trivial.
+    discriminate.
+
+  Qed.
+
+  Definition AddProg : list WindowedMultiplication -> Prop :=
+    Forall (fun x => match x with | wm_Add _ _ => True | _ => False end).
+
+  Theorem addProgPermEq : forall (ps1 ps2 : list WindowedMultiplication),
+    Permutation ps1 ps2 ->
+    AddProg ps1 ->
+    groupMul_signedWindows_prog ps1 == groupMul_signedWindows_prog ps2.
+
+    induction 1; intros; simpl in *.
+    reflexivity.
+
+    apply evalWindowMult_compat.
+    eapply IHPermutation.
+    inversion H0; eauto.
+    inversion H; clear H; subst.
+    inversion H3; clear H3; subst.
+    
+    unfold evalWindowMult.
+    destruct y.
+    destruct x.
+    repeat rewrite <- groupAdd_assoc.
+    apply groupAdd_proper.
+    rewrite groupAdd_comm.
+    reflexivity.
+    reflexivity.
+    intuition idtac.
+    intuition idtac.
+
+    rewrite IHPermutation1.
+    apply IHPermutation2.
+    eauto.
+    eapply Permutation_Forall.
+    eauto.
+    eauto.
+    eauto.
+
+  Qed.
+
+  Fixpoint combineOpt(A: Type)(ls : list (option A)) :=
+    match ls with
+    | nil => Some nil
+    | opta :: ls' => 
+      match opta with
+      | None => None
+      | Some a =>
+        match (combineOpt ls') with
+        | None => None
+        | Some ls'' => Some (a :: ls'')
+        end
+      end
+    end.
+
+  Definition multiSelect(A : Type)(ls : list A)(lsn : list nat) : option (list A) :=
+    combineOpt (map (nth_error ls) lsn).
+
+  Theorem combineOpt_perm_ex : forall (A : Type)(ls1 ls2 : list (option A)),
+    Permutation ls1 ls2 ->
+    forall ls1', 
+    combineOpt ls1 = Some ls1' ->
+    exists ls2', 
+    combineOpt ls2 = Some ls2' /\
+    Permutation ls1' ls2'.
+
+    induction 1; intros; simpl in *.
+    inversion H; clear H; subst.
+    exists nil.
+    intuition idtac.
+    econstructor.
+
+    destruct x; simpl in *.
+    remember (combineOpt l) as z.
+    destruct z.
+    inversion H0; clear H0; subst.
+    destruct (IHPermutation l0).
+    reflexivity.
+    intuition idtac.
+    exists (a :: x).
+    rewrite H1.
+    intuition idtac.
+    econstructor.
+    trivial.
+    discriminate.
+    discriminate.
+
+    destruct y; try discriminate.
+    destruct x; try discriminate.
+    remember (combineOpt l) as z1; destruct z1.
+    inversion H; clear H; subst.
+    exists (a0 :: a :: l0).
+    intuition idtac.
+    econstructor.
+    discriminate.
+
+    destruct (IHPermutation1 ls1').
+    trivial.
+    intuition idtac.
+    destruct (IHPermutation2 x).
+    trivial.
+    intuition idtac.
+    exists x0.
+    intuition idtac.
+    econstructor; eauto.
+
+  Qed.
+
+  Theorem nth_error_skipn_eq : forall n3 (A : Type)(ls : list A) n1,
+    (n3 <= n1)%nat ->
+    nth_error ls n1 = nth_error (skipn n3 ls) (n1 - n3).
+
+    induction n3; intros; simpl in *.
+    rewrite Nat.sub_0_r.
+    reflexivity.
+
+    destruct n1.
+    lia.
+    simpl.
+    
+    destruct ls.
+    symmetry.
+    apply nth_error_None.
+    simpl.
+    lia.
+    eapply IHn3.
+    lia.
+
+  Qed.
+  
+  Theorem nth_error_seq_skipn_eq : forall n2 (A : Type)(ls : list A) n1 n3,
+    (n3 <= n1)%nat ->
+    map (nth_error ls) (seq n1 n2) = map (nth_error (skipn n3 ls)) (seq (n1 - n3) n2).
+
+    induction n2; intros; simpl in *.
+    trivial.
+    f_equal.
+    eapply nth_error_skipn_eq.
+    lia.
+    Search nth_error skipn.
+    specialize (IHn2 _ ls (S n1) n3).
+    rewrite IHn2.
+    replace (S n1 - n3)%nat with (S (n1 - n3)).
+    reflexivity.
+    lia.
+    lia.
+  Qed.
+
+  Theorem combineOpt_map_seq_eq : forall (A : Type)(ls : list A),
+    combineOpt (map (nth_error ls) (seq 0 (length ls))) = Some ls.
+
+    induction ls; intros; simpl in *.
+    reflexivity.
+    rewrite (@nth_error_seq_skipn_eq _ _ _ _ 1%nat).
+    simpl.
+    rewrite IHls.
+    reflexivity.
+    trivial.
+  
+  Qed.
+
+  Theorem multiSelect_perm : forall (A : Type)(ls ls' : list A)(lsn : list nat),
+    Permutation lsn (seq O (length ls)) ->
+    multiSelect ls lsn = Some ls' ->
+    Permutation ls ls'.
+
+    intros.
+    unfold multiSelect in *.
+    assert (combineOpt (map (nth_error ls) (seq 0 (length ls))) = Some ls).
+    apply combineOpt_map_seq_eq.
+
+    eapply combineOpt_perm_ex in H0.
+    destruct H0.
+    intuition idtac.
+    rewrite H1 in H2.
+    inversion H2; clear H2; subst.
+    eapply Permutation_sym.
+    trivial.
+    apply Permutation_map.
+    trivial.
+
+  Qed.
+
+  Theorem multiSelect_in_range_Some : forall (A : Type)(ls : list A)(lsn : list nat),
+    (forall n, In n lsn -> n < length ls)%nat ->
+    exists ls', multiSelect ls lsn = Some ls'.
+
+    induction lsn; intros; simpl in *.
+    exists nil.
+    reflexivity.
+    edestruct (IHlsn).
+    intros.
+    apply H.
+    intuition idtac.
+    unfold multiSelect in *.
+    simpl.
+    case_eq (nth_error ls a); intros.
+    rewrite H0.
+    econstructor; eauto.
+    apply nth_error_None in H1.
+    specialize (H a).
+    intuition idtac.
+    lia.
+
+  Qed.
+
+  Theorem multiSelect_perm_Some : forall (A : Type)(ls : list A)(lsn : list nat),
+    Permutation lsn (seq O (length ls)) -> 
+    exists ls', multiSelect ls lsn = Some ls'.
+
+    intros.
+    apply multiSelect_in_range_Some.
+    intros.
+    eapply Permutation_in in H0; eauto.
+    apply in_seq in H0.
+    lia.
+    
+  Qed.
+
+  Fixpoint insertDoubleAt d (ls : list WindowedMultiplication)(n : nat) : option (list WindowedMultiplication) :=
+    match n with
+    | O => (insertDouble d ls)
+    | S n' => 
+      match ls with
+      | nil => None
+      | x :: ls' =>
+        match (insertDoubleAt d ls' n') with
+        | None => None
+        | Some ls'' => Some (x :: ls'')
+        end
+      end
+    end.
+
+  Fixpoint insertDoublesAt d ls lsn :=
+    match lsn with
+    | nil => Some ls
+    | n :: lsn' => 
+      match (insertDoubleAt d ls n) with
+      | None => None
+      | Some ls' => insertDoublesAt d ls' lsn'
+      end
+    end.
+
+  Theorem insertDoubleAt_equiv : forall n d ls ls',
+    insertDoubleAt d ls n = Some ls' ->
+    groupMul_signedWindows_prog ls == groupMul_signedWindows_prog ls'.
+
+    induction n; intros; simpl in *.
+    replace (insertDoubleAt d ls 0) with (insertDouble d ls) in H.
+    eapply insertDouble_equiv.
+    eauto.
+    destruct ls; simpl in *.
+    reflexivity.
+    reflexivity.
+    
+    destruct ls; simpl in *.
+    discriminate.
+    case_eq (insertDoubleAt d ls n); intros;
+    rewrite H0 in H.
+    inversion H; clear H; subst.
+    simpl.
+    apply evalWindowMult_compat.
+    eapply IHn.
+    eauto.
+    discriminate.
+
+  Qed.
+
+  Theorem insertDoublesAt_equiv : forall lsn d ls ls',
+    insertDoublesAt d ls lsn = Some ls' ->
+    groupMul_signedWindows_prog ls == groupMul_signedWindows_prog ls'.
+
+    induction lsn; intros; simpl in *.
+    inversion H; clear H; subst.
+    reflexivity.
+    
+    case_eq (insertDoubleAt d ls a); intros;
+    rewrite H0 in H.
+    transitivity (groupMul_signedWindows_prog l).
+    eapply insertDoubleAt_equiv; eauto.
+    eauto.
+    discriminate.
+  Qed.
+
+  (* We can arbitrarily permute and insert accumulator doublings. If it succeeds, then the value computed 
+  by this program will be the same as the basic windowed multiplication. *)
+  Definition permuteAndDouble ws d (perm doubles : list nat) :=
+    match (multiSelect (signedWindowsToProg ws 0) perm) with
+    | None => None
+    | Some ps => insertDoublesAt d ps doubles
+    end.
+
+  Theorem signedWindowsToProg_length : forall ws n,
+    length (signedWindowsToProg ws n) = length ws.
+
+    induction ws; intros; simpl in *. 
+    reflexivity.
+    f_equal.
+    eauto.
+
+  Qed.
+
+  Theorem signedWindowsToProg_AddProg : forall ws n,
+    AddProg (signedWindowsToProg ws n).
+
+    induction ws; intros; unfold AddProg in *; simpl in *.
+    econstructor.
+    econstructor.
+    trivial.
+    eapply IHws.
+
+  Qed.
+
+  Theorem permuteAndDouble_equiv : forall ws d perm doubles ps,
+    Forall RegularWindow ws -> 
+    Permutation perm (seq 0 (length ws)) ->
+    permuteAndDouble ws d perm doubles = Some ps -> 
+    groupMul_signedWindows_prog ps == groupMul_signedWindows ws.
+
+    intros.
+    unfold permuteAndDouble in *.
+    case_eq (multiSelect (signedWindowsToProg ws 0) perm); intros;
+    rewrite H2 in H1.
+    transitivity (groupMul_signedWindows_prog l).
+    symmetry.
+    eapply insertDoublesAt_equiv; eauto.
+    transitivity (groupMul_signedWindows_prog (signedWindowsToProg ws 0) ).
+    symmetry.
+    apply addProgPermEq.
+    eapply multiSelect_perm; [idtac | eauto].
+    rewrite signedWindowsToProg_length.
+    trivial.
+    apply signedWindowsToProg_AddProg.
+    rewrite groupMul_signedWindows_prog_equiv.
+    rewrite <- groupMul_signedWindows_exp_equiv.
+    rewrite Nat.mul_0_r.
+    simpl.
+    reflexivity.
+    trivial.
+    
+    discriminate.
+
+  Qed.
   End SignedWindows.
 
   (* signed odd windows *)
@@ -1968,24 +2628,811 @@ Section GroupMulWNAF.
 
   Section SignedWindowsWithTable.
 
-  Variable numWindows : nat.
-  Hypothesis numWindows_nz : numWindows <> 0%nat.
+    Variable numWindows : nat.
+    Hypothesis numWindows_nz : numWindows <> 0%nat.
 
-  Definition groupMul_signedRegular_table p n := 
-    groupMul_signedRegular p (groupMul_signed_table (preCompTable p)) numWindows n.
+    Definition groupMul_signedRegular_table p n := 
+      groupMul_signedRegular p (groupMul_signed_table (preCompTable p)) numWindows n.
 
-  Theorem groupMul_signedRegular_table_correct : forall p n,
-    Z.of_nat n < Z.shiftl 1 (Z.of_nat (numWindows * wsize)) ->
-    groupMul_signedRegular_table p n == groupMul n p.
+    Theorem groupMul_signedRegular_table_correct : forall p n,
+      Z.of_nat n < Z.shiftl 1 (Z.of_nat (numWindows * wsize)) ->
+      groupMul_signedRegular_table p n == groupMul n p.
 
-    intros.
-    eapply groupMul_signedRegular_correct; intros.
-    eapply signedMul_table_correct; trivial.
-    apply preCompTable_correct.
-    trivial.
-    trivial.
+      intros.
+      eapply groupMul_signedRegular_correct; intros.
+      eapply signedMul_table_correct; trivial.
+      apply preCompTable_correct.
+      trivial.
+      trivial.
 
-  Qed.
+    Qed.
+
+
+  
+    (* The precomputed generator multiplication algorithm is essentially the same as the wnaf multiplication algorithm, except:
+    1. In addition to the pre-computation of [1G, 3G, ... 31G] that are used for a single window, also precompute tables of larger values like 
+    [1*2^20G, 3*2^20G, ..., 31*2^20G]. In the general multiplication algorithm, these multiples would have been computed by 
+    doubling the accumulator in between windows. In the precomputed generator algorithm, we avoid some of this doubling and add in the pre-computed
+    values. We only need to double to get from one group to the next. With a window size of 5, and with 4 groups, we only need to double 20 times. 
+    2. Change the order so that each precomputed subtable is used at the beginning to produce a value that is added to the accumulator, 
+    and then the accumulator is doubled wsize times. 
+    *)
+
+    Section GeneratorMulWNAF.
+
+      Variable p : GroupElem.
+      Variable numPrecompExponentGroups : nat.
+      Hypothesis numPrecompExponentGroups_nz : numPrecompExponentGroups <> O.
+
+      (* Start with an algorithm that performs the computation in the correct order, but doesn't do any table lookups. 
+      This is the basic odd signed window multiplication operation with the additions permuted, and with some accumulator 
+      doublings inserted. *)
+
+      Definition divides x y :=
+        eq_nat_dec (gcd x y) x.
+
+      (* returns true if v = k*x + y for some k, false otherwise*)
+      Definition isMultiple v x y :=
+        if (ge_dec v y) then (if (divides x (v - y)) then true else false) else false.
+
+      Theorem isMultiple_true : forall a x b,
+        isMultiple (a * x + b) x b = true.
+
+        intros.
+        unfold isMultiple.
+        destruct (ge_dec (a * x + b) b).
+        rewrite Nat.add_sub.
+        unfold divides.
+        replace (a * x)%nat with (0 + a * x)%nat.
+        rewrite Nat.gcd_add_mult_diag_r.
+        rewrite Nat.gcd_0_r.
+        destruct (Nat.eq_dec x x).
+        trivial.
+        intuition idtac.
+        lia.
+        lia.
+
+      Qed.
+
+      Theorem isMultiple_true_if : forall y x b,
+        isMultiple y x b = true ->
+        exists a, y  = (a * x + b)%nat.
+
+        intros. 
+        unfold isMultiple in *.
+        destruct (ge_dec y b).
+        destruct (eq_nat_dec x O).
+        subst.
+        exists O.
+        simpl.
+        unfold divides in *.
+        destruct (Nat.eq_dec (gcd O (y - b))%nat).
+        apply Nat.gcd_eq_0_r in e.
+        lia.
+        discriminate.
+        exists ((y - b) / x)%nat.
+        unfold divides in *.
+        destruct (Nat.eq_dec (gcd x (y - b)) x).
+        replace ((y - b) / x * x )%nat with ((y - b) / Nat.gcd (y - b) x * x)%nat.
+        rewrite Nat.lcm_equiv2.
+        rewrite Nat.gcd_comm.
+        rewrite e.
+        rewrite Nat.div_mul.
+        lia.
+        trivial.
+        intuition idtac.
+        rewrite Nat.gcd_comm in H0.
+        rewrite H0 in e.
+        lia.
+        rewrite Nat.gcd_comm.
+        rewrite e.
+        reflexivity.  
+        discriminate.
+        discriminate.
+      Qed.
+
+      Fixpoint lsMultiples(nMax numGroups curGroup : nat) :=
+        match nMax with
+        | O => nil
+        | S nMax' => (lsMultiples nMax' numGroups curGroup) ++ 
+        (if (isMultiple nMax' numGroups curGroup) then nMax'::nil else nil)
+         
+      end.
+
+      Theorem In_lsMultiples : forall nMax a x b,
+        (b < x)%nat ->
+        (a * x + b < nMax)%nat -> 
+        In (a * x + b)%nat (lsMultiples nMax x b).
+
+        induction nMax; intros; simpl in *.
+        lia.
+        destruct (eq_nat_dec (a*x + b) nMax).
+        subst.
+        apply in_or_app.
+        right.
+        rewrite isMultiple_true.
+        simpl.
+        intuition idtac.
+        apply in_or_app.
+        left.
+        eapply IHnMax.
+        eauto.
+        lia.
+
+      Qed.
+
+      Theorem In_lsMultiples_if : forall nMax a x b,
+        In a (lsMultiples nMax x b) -> 
+        (a < nMax)%nat.
+  
+        induction nMax; intros; simpl in *.
+        intuition idtac.
+        destruct (isMultiple nMax x b); intros.
+        apply in_app_or in H.
+        simpl in *.
+        intuition idtac.
+        eapply IHnMax in H0.
+        lia.
+        subst.
+        lia.   
+        rewrite app_nil_r in *.
+        apply IHnMax in H.
+        lia.
+  
+      Qed.
+
+
+      Fixpoint groupIndices_h(nMax numGroups curGroup : nat) :=
+        match curGroup with
+        | O => nil
+        | S curGroup' => 
+          (groupIndices_h nMax numGroups curGroup') ++ ((lsMultiples nMax numGroups curGroup') :: nil)
+        end.
+
+      Theorem flatten_app : forall (A : Type)(ls1 ls2 : list (list A)),
+        flatten (ls1 ++ ls2) = (flatten ls1 ++ flatten ls2).
+      
+        induction ls1; intros; simpl in *.
+        reflexivity.
+        rewrite <- app_assoc.
+        f_equal.
+        eauto.
+
+      Qed.
+
+      Theorem In_groupIndices_h : forall  b1 b2 a x nMax,
+        (b2 < b1)%nat -> 
+        (b2 < x)%nat ->
+        (a * x + b2 < nMax)%nat -> 
+        In (a * x + b2)%nat  (flatten (groupIndices_h nMax x b1)).
+
+        induction b1; intros; simpl in *.
+        lia.
+        
+        destruct (eq_nat_dec b2 b1).
+        subst.
+        rewrite flatten_app.
+        apply in_or_app.
+        simpl.
+        right.
+        apply in_or_app.
+        left.
+        eapply In_lsMultiples.
+        trivial.
+        trivial.
+        rewrite flatten_app.
+        apply in_or_app.
+        left.
+        eapply IHb1.
+        lia.
+        trivial.
+        trivial.
+      Qed.
+
+      Theorem In_groupIndices_h_if : forall  b1 a x nMax,
+        In a (flatten (groupIndices_h nMax x b1)) -> 
+        (a < nMax)%nat.
+
+        induction b1; intros; simpl in *.
+        intuition idtac.
+        rewrite flatten_app in *.
+        simpl in *.
+        rewrite app_nil_r in *.
+        assert (In a (flatten (groupIndices_h nMax x b1)) \/ In a (lsMultiples nMax x b1)).
+        eapply in_app_or.
+        eapply H.
+        intuition idtac.
+        eapply IHb1; eauto.
+        eapply In_lsMultiples_if; eauto.
+
+      Qed.
+
+      Theorem NoDup_app : forall (A : Type)(ls1 ls2 : list A),
+        NoDup ls1 -> 
+        NoDup ls2 -> 
+        (forall a, In a ls1 -> In a ls2 -> False) -> 
+        NoDup (ls1 ++ ls2).
+
+        induction ls1; intros; simpl in *.
+        trivial.
+        inversion H; clear H; subst.
+        eapply (@Permutation_NoDup _ (ls1 ++ (a :: ls2))).
+        eapply Permutation_sym.
+        eapply Permutation_middle.
+        eapply IHls1.
+        trivial.
+        econstructor.
+        intuition idtac.
+        eapply H1.
+        left.
+        reflexivity.
+        trivial.
+        trivial.
+        intuition idtac.
+        inversion H2; clear H2; subst.
+        intuition idtac.
+        eauto.
+
+      Qed.
+
+      Theorem lsMultiples_NoDup : forall nMax x a,
+        NoDup (lsMultiples nMax x a).
+
+        induction nMax; intros; simpl in *.
+        econstructor.
+        eapply NoDup_app.
+        eauto.
+        destruct (isMultiple nMax x a).
+        econstructor.
+        simpl.
+        intuition idtac.
+        econstructor.
+        econstructor.
+        intros.
+        apply In_lsMultiples_if in H.
+        destruct (isMultiple nMax x a); simpl in *.
+        intuition idtac; subst.
+        lia.
+        intuition idtac.
+
+      Qed.
+
+      Theorem in_lsMultiples_isMultiple : forall n x a b,
+        In x (lsMultiples n a b) ->
+        exists y, (x = y * a + b)%nat.
+
+        induction n; intros; simpl in *.
+        intuition idtac.
+        apply in_app_or in H.
+        intuition idtac.
+        eauto.
+        case_eq (isMultiple n a b); intros;
+        rewrite H in H0.
+        simpl in *.
+        intuition idtac; subst.
+        apply isMultiple_true_if.
+        trivial.
+        simpl in *; intuition idtac.
+
+      Qed.
+
+      Theorem in_groupIndices_h_isMultiple : forall b a x nMax,
+        In a (flatten (groupIndices_h nMax x b)) ->
+        exists y b', (b' < b /\ a = y * x + b')%nat.
+
+        induction b; intros; simpl in *.
+        intuition idtac.
+        rewrite flatten_app in *.
+        simpl in *.
+        rewrite app_nil_r in *.
+        apply in_app_or in H.
+        intuition idtac.
+        edestruct IHb.
+        eauto.
+        destruct H.
+        intuition idtac.
+        subst.
+        econstructor.
+        exists x1.
+        intuition idtac.
+        lia.
+        apply in_lsMultiples_isMultiple in H0.
+        destruct H0.
+        subst.
+        econstructor.
+        exists b.
+        intuition idtac.
+        lia.
+
+      Qed.
+  
+      Theorem mul_add_mod_ne : forall x a1 a2 b1 b2,
+        (b1 < x)%nat ->
+        (b2 < b1)%nat -> 
+        (a1 * x + b1)%nat = (a2 * x + b2)%nat ->
+        False.
+
+        intros.
+        rewrite Nat.mul_comm in H1.
+        rewrite (Nat.mul_comm a2) in H1.
+        apply Nat.div_mod_unique in H1.
+        intuition idtac.
+        lia.
+        lia.
+        lia.
+
+      Qed.
+
+      Theorem groupIndices_h_NoDup : forall  b x nMax,
+        (b <= x)%nat -> 
+        NoDup (flatten (groupIndices_h nMax x b)).
+
+        induction b; intros; simpl in *.
+        econstructor.
+        rewrite flatten_app.
+        simpl.
+        rewrite app_nil_r.
+        eapply NoDup_app.
+        eapply IHb.
+        lia.
+        apply lsMultiples_NoDup.
+
+        intros.
+        apply in_lsMultiples_isMultiple in H1.
+        apply in_groupIndices_h_isMultiple in H0.
+        destruct H0.
+        destruct H0.
+        destruct H1.
+        intuition idtac.
+        subst.
+        eapply mul_add_mod_ne; [idtac | idtac | eauto].
+        lia.
+        lia.
+
+      Qed.
+
+      Definition groupIndices nMax numGroups :=
+        groupIndices_h nMax numGroups numGroups.
+
+      Theorem groupIndices_perm : forall x y,
+        y <> O -> 
+        Permutation (seq 0 x) (flatten (groupIndices x y)).
+
+        intros.
+        eapply NoDup_Permutation.
+        apply seq_NoDup.
+        apply groupIndices_h_NoDup.
+        lia.
+
+        intros.
+        intuition idtac.
+        rewrite (Nat.div_mod_eq x0 y).
+        rewrite Nat.mul_comm.
+        unfold groupIndices.
+        eapply In_groupIndices_h.
+        apply Nat.mod_upper_bound.
+        intuition idtac.
+        apply Nat.mod_upper_bound.
+        intuition idtac.
+        rewrite Nat.mul_comm.
+        rewrite <- (Nat.div_mod_eq x0 y).
+        apply in_seq in H0.
+        lia.
+
+        apply in_seq.
+        apply In_groupIndices_h_if in H0.
+        lia.
+
+      Qed.
+
+
+      Fixpoint endIndices_h(A : Type)(ls : list (list A))(x : nat) :=
+        match ls with
+        | nil => nil
+        | a :: ls' => 
+          ((length a) + x)%nat :: (endIndices_h ls' (length a + x))
+        end.
+
+      (* insert doublings from back to front so that it doesn't upset earlier indices *)
+      Definition endIndices(A : Type)(ls : list (list A)) :=
+        tl (rev (endIndices_h ls O)).
+
+      Variable pMultiple : SignedWindow -> GroupElem.
+      Hypothesis pMultiple_correct : forall w,
+        OddWindow w ->
+        pMultiple w == groupMul_doubleAdd_signed w p.
+
+      Definition groupedMul ws :=
+        match (permuteAndDouble ws numPrecompExponentGroups (flatten (groupIndices numWindows numPrecompExponentGroups)) (endIndices (groupIndices numWindows numPrecompExponentGroups))) with
+        | None => None
+        | Some ps => Some (groupMul_signedWindows_prog p ps)
+        end.
+
+      Theorem groupedMul_correct : forall ws x,
+        length ws = numWindows -> 
+        Forall OddWindow ws -> 
+        groupedMul ws = Some x -> 
+        groupMul_signedWindows pMultiple ws == x.
+
+        intros.
+        unfold groupedMul in *.
+        case_eq (permuteAndDouble ws numPrecompExponentGroups
+        (flatten (groupIndices numWindows numPrecompExponentGroups))
+        (endIndices (groupIndices numWindows numPrecompExponentGroups))); intros;
+        rewrite H2 in H1.
+        inversion H1; clear H1.
+        rewrite <- permuteAndDouble_equiv.
+        reflexivity.
+        eauto.
+        trivial.
+        eapply Permutation_sym.
+        eapply groupIndices_perm.
+        apply numPrecompExponentGroups_nz.
+        rewrite <- H in H2.
+        eapply H2.
+
+        discriminate.
+
+      Qed.
+
+      (* Use precomputed table for all additions *)
+      Variable pExpMultiple : nat -> SignedWindow -> GroupElem.
+      Hypothesis pExpMultiple_correct : forall n w,
+        OddWindow w ->
+        pExpMultiple n w == groupMul_doubleAdd_signed (Z.shiftl w (Z.of_nat (numPrecompExponentGroups * wsize * n))) p.
+
+      Definition evalWindowMult_precomp(p : GroupElem) (m : WindowedMultiplication) (e : GroupElem) :=
+      match m with
+      | wm_Add n w => 
+        if (divides numPrecompExponentGroups n) then (Some (groupAdd (pExpMultiple (Nat.div n numPrecompExponentGroups) w) e)) else None
+      | wm_Double n => Some (groupDouble_n (n * wsize) e)
+      end.
+
+      Fixpoint groupMul_signedWindows_precomp (ws : list WindowedMultiplication) : option GroupElem :=
+        match ws with
+        | nil => Some idElem
+        | w :: ws' => match (groupMul_signedWindows_precomp ws') with
+          | None => None
+          | Some x => 
+            evalWindowMult_precomp p w x
+          end
+        end.
+
+      Definition groupedMul_precomp ws :=
+        match (permuteAndDouble ws numPrecompExponentGroups (flatten (groupIndices numWindows numPrecompExponentGroups)) (endIndices (groupIndices numWindows numPrecompExponentGroups))) with
+        | None => None
+        | Some ps => (groupMul_signedWindows_precomp ps)
+        end.
+
+      
+      Definition ProgOddWindow (a : WindowedMultiplication) :=
+        match a with | wm_Add n w => OddWindow w | _ => True end.
+
+      Theorem evalWindowMult_precomp_equiv : forall a g x,
+        ProgOddWindow a ->
+        evalWindowMult_precomp p a g = Some x ->
+        evalWindowMult p a g == x.
+  
+        unfold evalWindowMult_precomp, evalWindowMult.
+        intros.
+        destruct a; simpl in *.
+        destruct(divides numPrecompExponentGroups n).
+        inversion H0; clear H0; subst.
+        rewrite pExpMultiple_correct.
+        eapply groupAdd_proper.
+        match goal with
+        | [|- ?f ?a ?c == ?f ?b ?c] => replace a with b
+        end.
+        reflexivity.
+        unfold zDouble_n.
+        f_equal. 
+        f_equal.
+        rewrite <- Nat.mul_assoc.
+        rewrite (Nat.mul_comm wsize).
+        rewrite Nat.mul_assoc.
+        f_equal.
+        rewrite Nat.mul_comm.
+        rewrite <- e at 1.
+        rewrite Nat.gcd_comm.
+        rewrite Nat.lcm_equiv2.
+        rewrite Nat.gcd_comm.
+        rewrite e.
+        apply Nat.div_mul.
+        lia.
+        rewrite Nat.gcd_comm.
+        lia.
+        reflexivity.
+        trivial.
+        discriminate.
+        inversion H0; clear H0; subst.
+        reflexivity.
+        
+      Qed.
+
+      Theorem groupMul_signedWindows_precomp_equiv : forall l x, 
+        Forall ProgOddWindow l -> 
+        groupMul_signedWindows_precomp l = Some x ->
+        groupMul_signedWindows_prog p l == x.
+
+        induction l; intros; simpl in *.
+        inversion H0; clear H0; subst.
+        reflexivity.
+        case_eq (groupMul_signedWindows_precomp l ); intros;
+        rewrite H1 in H0.
+        transitivity (evalWindowMult p a g).
+        eapply evalWindowMult_compat.
+        eapply IHl.
+        inversion H; clear H; subst.
+        trivial.
+        trivial.
+        eapply evalWindowMult_precomp_equiv.
+        inversion H; clear H; subst.
+        trivial.
+        eauto.
+        discriminate.
+        
+      Qed.
+
+      Theorem decrExp_OddWindow : forall x a y, 
+        ProgOddWindow a -> 
+        (decrExp x a) = Some y ->
+        ProgOddWindow y.
+
+        intros.
+        unfold decrExp, ProgOddWindow in *.
+        destruct a; simpl in *.
+        destruct (le_dec x n).
+        inversion H0; clear H0; subst.
+        trivial.
+        discriminate.
+        inversion H0; clear H0; subst.
+        trivial.
+
+      Qed.
+
+      Theorem decrExpLs_OddWindow : forall l0 x l1, 
+        Forall ProgOddWindow l0 -> 
+        decrExpLs x l0 = Some l1 ->
+        Forall ProgOddWindow l1.
+
+        induction l0; intros; simpl in *.
+        inversion H0; clear H0; subst.
+        econstructor.
+        case_eq (decrExp x a); intros;
+        rewrite H1 in H0.
+        inversion H; clear H; subst.
+        case_eq (decrExpLs x l0); intros;
+        rewrite H in H0.
+        inversion H0; clear H0; subst.
+        econstructor; eauto.  
+        eapply decrExp_OddWindow; eauto.
+        discriminate.
+        discriminate.
+
+      Qed.
+
+      Theorem insertDoubleAt_OddWindow : forall z x l0 l,
+        Forall ProgOddWindow l0 -> 
+        insertDoubleAt x l0 z = Some l ->
+        Forall ProgOddWindow l.
+
+        induction z; intros; simpl in *.
+        replace (insertDoubleAt x l0 O) with (insertDouble x l0) in H0.
+        unfold insertDouble in *.
+        case_eq (decrExpLs  x l0); intros;
+        rewrite H1 in H0.
+        inversion H0; clear H0; subst.
+        econstructor.
+        apply I.
+        eapply decrExpLs_OddWindow; eauto.
+        discriminate.
+        destruct l0; simpl in *.
+        reflexivity.
+        reflexivity.
+        destruct l0; simpl in *.
+        discriminate.
+        case_eq (insertDoubleAt x l0 z); intros;
+        rewrite H1 in H0.
+        inversion H0; clear H0; subst.
+        inversion H; clear H; subst.
+        econstructor.
+        trivial.
+        eauto.
+        discriminate.
+
+      Qed.
+
+      Theorem insertDoublesAt_OddWindow : forall z x l0 l,
+        Forall ProgOddWindow l0 -> 
+        insertDoublesAt x l0 z = Some l ->
+        Forall ProgOddWindow l.
+
+        induction z; intros; simpl in *.
+        inversion H0; clear H0; subst.
+        trivial.
+
+        case_eq (insertDoubleAt x l0 a); intros;
+        rewrite H1 in H0.
+        eapply IHz.
+        eapply insertDoubleAt_OddWindow.
+        eauto.
+        eauto.
+        eauto.
+        discriminate.
+
+      Qed.
+
+      Theorem combineOpt_OddWindow : forall l1 l2,
+        Forall (fun a => match a with | Some x => ProgOddWindow x | None => True end) l1 ->
+        combineOpt l1 = Some l2 ->
+        Forall ProgOddWindow l2.
+
+        induction l1; intros; simpl in *.
+        inversion H0; clear H0; subst.
+        econstructor.
+        inversion H; clear H; subst.
+        destruct a.
+        case_eq (combineOpt l1); intros;
+        rewrite H in H0.
+        inversion H0; clear H0; subst.
+        econstructor.
+        trivial.
+        eapply IHl1.
+        trivial.
+        trivial.
+        discriminate.
+        discriminate.
+      Qed.
+
+      Theorem map_nth_error_Forall : forall l2  (A : Type)(l1 : list A) P,
+        Forall P l1 ->
+        Forall (fun x => match x with | Some y => P y | None => True end) (map (nth_error l1) l2).
+
+        induction l2; intros; simpl in *.
+        econstructor.
+        econstructor; eauto.
+        case_eq (nth_error l1 a); intros.
+        eapply Forall_forall.
+        eauto.
+        eapply nth_error_In; eauto.
+        apply I.
+
+      Qed.
+    
+      Theorem multiSelect_OddWindow : forall l1 l2 l3,
+        Forall ProgOddWindow l1 -> 
+        multiSelect l1 l2 = Some l3 -> 
+        Forall ProgOddWindow l3.
+
+        intros.
+        unfold multiSelect in *.
+        eapply combineOpt_OddWindow; [idtac | eauto].
+        eapply map_nth_error_Forall; eauto.
+
+      Qed.
+
+      Theorem signedWindowsToProg_ProgOddWindow : forall ws n,
+        Forall OddWindow ws ->
+        Forall ProgOddWindow (signedWindowsToProg ws n).
+
+        induction ws; intros; simpl in *.
+        econstructor.
+        inversion H; clear H; subst.
+        econstructor.
+        unfold ProgOddWindow.
+        trivial.
+        eauto.
+
+      Qed.
+
+      Theorem permuteAndDouble_OddWindow : forall ws x y z l,
+        Forall OddWindow ws -> 
+        permuteAndDouble ws x y z = Some l ->
+        Forall ProgOddWindow l.
+
+        intros.
+        unfold permuteAndDouble in *.
+        case_eq (multiSelect (signedWindowsToProg ws 0) y); intros;
+        rewrite H1 in H0.
+        eapply insertDoublesAt_OddWindow.
+        eapply multiSelect_OddWindow.
+        eapply signedWindowsToProg_ProgOddWindow.
+        eauto.
+        eauto.
+        eauto.
+        discriminate.
+
+      Qed.
+        
+      Theorem groupedMul_precomp_equiv : forall ws x x',
+        Forall OddWindow ws -> 
+        groupedMul_precomp ws = Some x -> 
+        groupedMul ws = Some x' ->
+        x == x'.
+
+        intros.
+        unfold groupedMul_precomp, groupedMul in *.
+        case_eq (permuteAndDouble ws numPrecompExponentGroups
+        (flatten (groupIndices numWindows numPrecompExponentGroups))
+        (endIndices (groupIndices numWindows numPrecompExponentGroups))); intros;
+        rewrite H2 in H0;
+        rewrite H2 in H1.
+        inversion H1; clear H1; subst.
+        symmetry.
+        eapply groupMul_signedWindows_precomp_equiv.
+        eapply permuteAndDouble_OddWindow;
+        eauto.
+        trivial.
+        discriminate.
+
+      Qed.
+
+      
+
+(*
+      Fixpoint appendN (n : nat)(A : Type)(ls : list (list A))(a : A) :=
+        match n with
+        | O =>
+          match ls with
+          | nil =>
+            (a :: nil) :: nil
+          | lsa :: ls' =>
+            (lsa ++ (a :: nil)) :: ls'
+          end
+        | S n' =>
+          match ls with
+          | nil =>
+            nil :: (appendN n' nil a)
+          | lsa :: ls' =>
+            lsa :: (appendN n' ls' a)
+          end
+      end.
+
+      Fixpoint splitListN_h (n : nat)(A : Type)(ls : list A)(i : nat)(acc : list (list A)) :=
+        match ls with
+        | nil => acc
+        | a :: ls' => 
+          let acc' := (appendN i acc a) in
+          splitListN_h n ls' (Nat.modulo (i + 1) n) acc'
+        end.
+
+      Definition splitListN (n : nat)(A : Type)(ls : list A) :=
+        splitListN_h n ls O nil.
+
+      Fixpoint groupAddAll_signedWindowsExp_h (i : nat)(ws : list SignedWindow) e :=
+        match ws with
+        | nil => e
+        | w :: ws' =>
+          groupAdd (pExpMultiple i w) (groupAddAll_signedWindowsExp_h (i + 1) ws' e)
+      end.
+
+    Definition groupAddAll_signedWindowsExp (ws : list SignedWindow) e :=
+      groupAddAll_signedWindowsExp_h O ws e.
+
+      Fixpoint groupMul_signedWindowsExp (ws : list (list SignedWindow)) :=
+        match ws with
+        | nil => idElem
+        | w :: ws' => 
+          (groupAddAll_signedWindowsExp w 
+            (groupDouble_n wsize (groupMul_signedWindowsExp ws')))
+        end.
+
+    Definition groupMul_signedRegularWindowsExp (isEven : bool) ws :=
+      let ws' := splitListN numPrecompExponentGroups ws in
+      if isEven 
+        then (groupAdd (groupMul_signedWindowsExp  ws') (groupInverse p))
+        else (groupMul_signedWindowsExp ws').
+
+      
+    
+      Definition preCompGeneratorTable := 
+        (map (fun i => preCompTable (groupMul( (Nat.shiftl 1 (wsize * numPrecompGroups) * i)) g)) (forNats (wsize * numPrecompGroups))).
+
+      Definition generatorMul_signedRegular_table n :=
+        
+      *)
+
+    End GeneratorMulWNAF.
   End SignedWindowsWithTable.
 
 End GroupMulWNAF.
@@ -2000,4 +3447,5 @@ Theorem recode_rwnaf_length : forall w nw z,
   apply recode_rwnaf_odd_length.
 
 Qed.
+
 

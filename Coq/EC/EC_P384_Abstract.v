@@ -440,5 +440,32 @@ Section PointMul.
 
   Qed.
 
+  Definition point_mul_base_abstract s0 s :=
+     EC_P384_5.conditional_subtract_if_even_mixed s felem_mul felem_sub felem_add felem_opp
+   (ecFoldl 4%nat (CryptolPrimitivesForSAWCore.seq 3%nat (CryptolPrimitivesForSAWCore.seq 6%nat (CryptolPrimitivesForSAWCore.seq 64%nat bool)))
+      (CryptolPrimitivesForSAWCore.seq 64%nat bool) (double_add_base s felem_mul felem_sub felem_add felem_opp (mul_scalar_rwnaf s0))
+      (ecZero (CryptolPrimitivesForSAWCore.seq 3%nat (CryptolPrimitivesForSAWCore.seq 6%nat (CryptolPrimitivesForSAWCore.seq 64%nat bool)))
+         (PZeroSeq 3%nat (CryptolPrimitivesForSAWCore.seq 6%nat (CryptolPrimitivesForSAWCore.seq 64%nat bool))
+            (PZeroSeq 6%nat (CryptolPrimitivesForSAWCore.seq 64%nat bool) (PZeroSeqBool 64%nat))))
+      (ecFromThenTo 3%nat 2%nat 0%nat (CryptolPrimitivesForSAWCore.seq 64%nat bool) 4%nat (PLiteralSeqBool 64%nat) (PLiteralSeqBool 64%nat)
+         (PLiteralSeqBool 64%nat))) s0
+   (coerce (CryptolPrimitivesForSAWCore.seq (tcAdd 2%nat 1%nat) (CryptolPrimitivesForSAWCore.seq 6%nat (CryptolPrimitivesForSAWCore.seq 64%nat bool)))
+      (CryptolPrimitivesForSAWCore.seq 3%nat (CryptolPrimitivesForSAWCore.seq 6%nat (CryptolPrimitivesForSAWCore.seq 64%nat bool)))
+      (seq_cong1 (tcAdd 2%nat 1%nat) 3%nat (CryptolPrimitivesForSAWCore.seq 6%nat (CryptolPrimitivesForSAWCore.seq 64%nat bool)) eq_refl)
+      (ecCat 2%nat 1%nat (CryptolPrimitivesForSAWCore.seq 6%nat (CryptolPrimitivesForSAWCore.seq 64%nat bool))
+         (ecAt 16%nat (CryptolPrimitivesForSAWCore.seq 2%nat (CryptolPrimitivesForSAWCore.seq 6%nat (CryptolPrimitivesForSAWCore.seq 64%nat bool))) Integer
+            PIntegralInteger
+            (ecAt 20%nat
+               (CryptolPrimitivesForSAWCore.seq 16%nat
+                  (CryptolPrimitivesForSAWCore.seq 2%nat (CryptolPrimitivesForSAWCore.seq 6%nat (CryptolPrimitivesForSAWCore.seq 64%nat bool)))) Integer
+               PIntegralInteger Op_modulez20Uparameterz20Up384zugzuprezucomp (ecNumber 0%nat Integer PLiteralInteger))
+            (ecNumber 0%nat Integer PLiteralInteger))
+         (Vector.cons p384_felem_one (Vector.nil (CryptolPrimitivesForSAWCore.seq 6%nat (CryptolPrimitivesForSAWCore.seq 64%nat bool)))))).
+
+  Theorem point_mul_base_abstract_equiv : forall s,
+    point_mul_base s = point_mul_base s.
+
+  Abort.
+
 End PointMul.
 
