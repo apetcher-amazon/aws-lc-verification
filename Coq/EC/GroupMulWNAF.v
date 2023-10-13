@@ -20,6 +20,370 @@ Require Import Permutation.
 
 From EC Require Import Zfacts.
 
+Fixpoint flatten (A : Type)(ls : list (list A)) : list A :=
+  match ls with
+  | nil => nil
+  | x :: ls' => x ++ (flatten ls')
+  end.
+
+Definition divides x y :=
+  eq_nat_dec (gcd x y) x.
+
+(* returns true if v = k*x + y for some k, false otherwise*)
+Definition isMultiple v x y :=
+  if (ge_dec v y) then (if (divides x (v - y)) then true else false) else false.
+
+Theorem isMultiple_true : forall a x b,
+  isMultiple (a * x + b) x b = true.
+
+  intros.
+  unfold isMultiple.
+  destruct (ge_dec (a * x + b) b).
+  rewrite Nat.add_sub.
+  unfold divides.
+  replace (a * x)%nat with (0 + a * x)%nat.
+  rewrite Nat.gcd_add_mult_diag_r.
+  rewrite Nat.gcd_0_r.
+  destruct (Nat.eq_dec x x).
+  trivial.
+  intuition idtac.
+  lia.
+  lia.
+
+Qed.
+
+Theorem isMultiple_true_if : forall y x b,
+  isMultiple y x b = true ->
+  exists a, y  = (a * x + b)%nat.
+
+  intros. 
+  unfold isMultiple in *.
+  destruct (ge_dec y b).
+  destruct (eq_nat_dec x O).
+  subst.
+  exists O.
+  simpl.
+  unfold divides in *.
+  destruct (Nat.eq_dec (gcd O (y - b))%nat).
+  apply Nat.gcd_eq_0_r in e.
+  lia.
+  discriminate.
+  exists ((y - b) / x)%nat.
+  unfold divides in *.
+  destruct (Nat.eq_dec (gcd x (y - b)) x).
+  replace ((y - b) / x * x )%nat with ((y - b) / Nat.gcd (y - b) x * x)%nat.
+  rewrite Nat.lcm_equiv2.
+  rewrite Nat.gcd_comm.
+  rewrite e.
+  rewrite Nat.div_mul.
+  lia.
+  trivial.
+  intuition idtac.
+  rewrite Nat.gcd_comm in H0.
+  rewrite H0 in e.
+  lia.
+  rewrite Nat.gcd_comm.
+  rewrite e.
+  reflexivity.  
+  discriminate.
+  discriminate.
+Qed.
+
+Fixpoint lsMultiples(nMax numGroups curGroup : nat) :=
+  match nMax with
+  | O => nil
+  | S nMax' => (lsMultiples nMax' numGroups curGroup) ++ 
+  (if (isMultiple nMax' numGroups curGroup) then nMax'::nil else nil)
+   
+end.
+
+Theorem In_lsMultiples : forall nMax a x b,
+  (b < x)%nat ->
+  (a * x + b < nMax)%nat -> 
+  In (a * x + b)%nat (lsMultiples nMax x b).
+
+  induction nMax; intros; simpl in *.
+  lia.
+  destruct (eq_nat_dec (a*x + b) nMax).
+  subst.
+  apply in_or_app.
+  right.
+  rewrite isMultiple_true.
+  simpl.
+  intuition idtac.
+  apply in_or_app.
+  left.
+  eapply IHnMax.
+  eauto.
+  lia.
+
+Qed.
+
+Theorem In_lsMultiples_if : forall nMax a x b,
+  In a (lsMultiples nMax x b) -> 
+  (a < nMax)%nat.
+
+  induction nMax; intros; simpl in *.
+  intuition idtac.
+  destruct (isMultiple nMax x b); intros.
+  apply in_app_or in H.
+  simpl in *.
+  intuition idtac.
+  eapply IHnMax in H0.
+  lia.
+  subst.
+  lia.   
+  rewrite app_nil_r in *.
+  apply IHnMax in H.
+  lia.
+
+Qed.
+
+
+Fixpoint groupIndices_h(nMax numGroups curGroup : nat) :=
+  match curGroup with
+  | O => nil
+  | S curGroup' => 
+    (groupIndices_h nMax numGroups curGroup') ++ ((lsMultiples nMax numGroups curGroup') :: nil)
+  end.
+
+Theorem flatten_app : forall (A : Type)(ls1 ls2 : list (list A)),
+  flatten (ls1 ++ ls2) = (flatten ls1 ++ flatten ls2).
+
+  induction ls1; intros; simpl in *.
+  reflexivity.
+  rewrite <- app_assoc.
+  f_equal.
+  eauto.
+
+Qed.
+
+Theorem In_groupIndices_h : forall  b1 b2 a x nMax,
+  (b2 < b1)%nat -> 
+  (b2 < x)%nat ->
+  (a * x + b2 < nMax)%nat -> 
+  In (a * x + b2)%nat  (flatten (groupIndices_h nMax x b1)).
+
+  induction b1; intros; simpl in *.
+  lia.
+  
+  destruct (eq_nat_dec b2 b1).
+  subst.
+  rewrite flatten_app.
+  apply in_or_app.
+  simpl.
+  right.
+  apply in_or_app.
+  left.
+  eapply In_lsMultiples.
+  trivial.
+  trivial.
+  rewrite flatten_app.
+  apply in_or_app.
+  left.
+  eapply IHb1.
+  lia.
+  trivial.
+  trivial.
+Qed.
+
+Theorem In_groupIndices_h_if : forall  b1 a x nMax,
+  In a (flatten (groupIndices_h nMax x b1)) -> 
+  (a < nMax)%nat.
+
+  induction b1; intros; simpl in *.
+  intuition idtac.
+  rewrite flatten_app in *.
+  simpl in *.
+  rewrite app_nil_r in *.
+  assert (In a (flatten (groupIndices_h nMax x b1)) \/ In a (lsMultiples nMax x b1)).
+  eapply in_app_or.
+  eapply H.
+  intuition idtac.
+  eapply IHb1; eauto.
+  eapply In_lsMultiples_if; eauto.
+
+Qed.
+
+Theorem NoDup_app : forall (A : Type)(ls1 ls2 : list A),
+  NoDup ls1 -> 
+  NoDup ls2 -> 
+  (forall a, In a ls1 -> In a ls2 -> False) -> 
+  NoDup (ls1 ++ ls2).
+
+  induction ls1; intros; simpl in *.
+  trivial.
+  inversion H; clear H; subst.
+  eapply (@Permutation_NoDup _ (ls1 ++ (a :: ls2))).
+  eapply Permutation_sym.
+  eapply Permutation_middle.
+  eapply IHls1.
+  trivial.
+  econstructor.
+  intuition idtac.
+  eapply H1.
+  left.
+  reflexivity.
+  trivial.
+  trivial.
+  intuition idtac.
+  inversion H2; clear H2; subst.
+  intuition idtac.
+  eauto.
+
+Qed.
+
+Theorem lsMultiples_NoDup : forall nMax x a,
+  NoDup (lsMultiples nMax x a).
+
+  induction nMax; intros; simpl in *.
+  econstructor.
+  eapply NoDup_app.
+  eauto.
+  destruct (isMultiple nMax x a).
+  econstructor.
+  simpl.
+  intuition idtac.
+  econstructor.
+  econstructor.
+  intros.
+  apply In_lsMultiples_if in H.
+  destruct (isMultiple nMax x a); simpl in *.
+  intuition idtac; subst.
+  lia.
+  intuition idtac.
+
+Qed.
+
+Theorem in_lsMultiples_isMultiple : forall n x a b,
+  In x (lsMultiples n a b) ->
+  exists y, (x = y * a + b)%nat.
+
+  induction n; intros; simpl in *.
+  intuition idtac.
+  apply in_app_or in H.
+  intuition idtac.
+  eauto.
+  case_eq (isMultiple n a b); intros;
+  rewrite H in H0.
+  simpl in *.
+  intuition idtac; subst.
+  apply isMultiple_true_if.
+  trivial.
+  simpl in *; intuition idtac.
+
+Qed.
+
+Theorem in_groupIndices_h_isMultiple : forall b a x nMax,
+  In a (flatten (groupIndices_h nMax x b)) ->
+  exists y b', (b' < b /\ a = y * x + b')%nat.
+
+  induction b; intros; simpl in *.
+  intuition idtac.
+  rewrite flatten_app in *.
+  simpl in *.
+  rewrite app_nil_r in *.
+  apply in_app_or in H.
+  intuition idtac.
+  edestruct IHb.
+  eauto.
+  destruct H.
+  intuition idtac.
+  subst.
+  econstructor.
+  exists x1.
+  intuition idtac.
+  lia.
+  apply in_lsMultiples_isMultiple in H0.
+  destruct H0.
+  subst.
+  econstructor.
+  exists b.
+  intuition idtac.
+  lia.
+
+Qed.
+
+Theorem mul_add_mod_ne : forall x a1 a2 b1 b2,
+  (b1 < x)%nat ->
+  (b2 < b1)%nat -> 
+  (a1 * x + b1)%nat = (a2 * x + b2)%nat ->
+  False.
+
+  intros.
+  rewrite Nat.mul_comm in H1.
+  rewrite (Nat.mul_comm a2) in H1.
+  apply Nat.div_mod_unique in H1.
+  intuition idtac.
+  lia.
+  lia.
+  lia.
+
+Qed.
+
+Theorem groupIndices_h_NoDup : forall  b x nMax,
+  (b <= x)%nat -> 
+  NoDup (flatten (groupIndices_h nMax x b)).
+
+  induction b; intros; simpl in *.
+  econstructor.
+  rewrite flatten_app.
+  simpl.
+  rewrite app_nil_r.
+  eapply NoDup_app.
+  eapply IHb.
+  lia.
+  apply lsMultiples_NoDup.
+
+  intros.
+  apply in_lsMultiples_isMultiple in H1.
+  apply in_groupIndices_h_isMultiple in H0.
+  destruct H0.
+  destruct H0.
+  destruct H1.
+  intuition idtac.
+  subst.
+  eapply mul_add_mod_ne; [idtac | idtac | eauto].
+  lia.
+  lia.
+
+Qed.
+
+Definition groupIndices nMax numGroups :=
+  groupIndices_h nMax numGroups numGroups.
+
+Theorem groupIndices_perm : forall x y,
+  y <> O -> 
+  Permutation (seq 0 x) (flatten (groupIndices x y)).
+
+  intros.
+  eapply NoDup_Permutation.
+  apply seq_NoDup.
+  apply groupIndices_h_NoDup.
+  lia.
+
+  intros.
+  intuition idtac.
+  rewrite (Nat.div_mod_eq x0 y).
+  rewrite Nat.mul_comm.
+  unfold groupIndices.
+  eapply In_groupIndices_h.
+  apply Nat.mod_upper_bound.
+  intuition idtac.
+  apply Nat.mod_upper_bound.
+  intuition idtac.
+  rewrite Nat.mul_comm.
+  rewrite <- (Nat.div_mod_eq x0 y).
+  apply in_seq in H0.
+  lia.
+
+  apply in_seq.
+  apply In_groupIndices_h_if in H0.
+  lia.
+
+Qed.
+
+
 Theorem nat_shiftl_nz : forall n b,
   (0 < b)%nat ->
   (0 < shiftl b n)%nat.
@@ -253,12 +617,6 @@ Section GroupMulWNAF.
     match ws with
     | nil => idElem
     | w :: ws' => (groupAdd_window w e (groupDouble_n (length w) (groupMul_windows ws' e)))
-    end.
-
-  Fixpoint flatten (A : Type)(ls : list (list A)) : list A :=
-    match ls with
-    | nil => nil
-    | x :: ls' => x ++ (flatten ls')
     end.
 
   Theorem groupDouble_distrib : 
@@ -687,6 +1045,7 @@ Section GroupMulWNAF.
     reflexivity.
 
   Qed.
+
 
   Fixpoint groupMul_signedWindows_exp (ws : list SignedWindow) n : GroupElem :=
   match ws with
@@ -2668,364 +3027,6 @@ Section GroupMulWNAF.
       This is the basic odd signed window multiplication operation with the additions permuted, and with some accumulator 
       doublings inserted. *)
 
-      Definition divides x y :=
-        eq_nat_dec (gcd x y) x.
-
-      (* returns true if v = k*x + y for some k, false otherwise*)
-      Definition isMultiple v x y :=
-        if (ge_dec v y) then (if (divides x (v - y)) then true else false) else false.
-
-      Theorem isMultiple_true : forall a x b,
-        isMultiple (a * x + b) x b = true.
-
-        intros.
-        unfold isMultiple.
-        destruct (ge_dec (a * x + b) b).
-        rewrite Nat.add_sub.
-        unfold divides.
-        replace (a * x)%nat with (0 + a * x)%nat.
-        rewrite Nat.gcd_add_mult_diag_r.
-        rewrite Nat.gcd_0_r.
-        destruct (Nat.eq_dec x x).
-        trivial.
-        intuition idtac.
-        lia.
-        lia.
-
-      Qed.
-
-      Theorem isMultiple_true_if : forall y x b,
-        isMultiple y x b = true ->
-        exists a, y  = (a * x + b)%nat.
-
-        intros. 
-        unfold isMultiple in *.
-        destruct (ge_dec y b).
-        destruct (eq_nat_dec x O).
-        subst.
-        exists O.
-        simpl.
-        unfold divides in *.
-        destruct (Nat.eq_dec (gcd O (y - b))%nat).
-        apply Nat.gcd_eq_0_r in e.
-        lia.
-        discriminate.
-        exists ((y - b) / x)%nat.
-        unfold divides in *.
-        destruct (Nat.eq_dec (gcd x (y - b)) x).
-        replace ((y - b) / x * x )%nat with ((y - b) / Nat.gcd (y - b) x * x)%nat.
-        rewrite Nat.lcm_equiv2.
-        rewrite Nat.gcd_comm.
-        rewrite e.
-        rewrite Nat.div_mul.
-        lia.
-        trivial.
-        intuition idtac.
-        rewrite Nat.gcd_comm in H0.
-        rewrite H0 in e.
-        lia.
-        rewrite Nat.gcd_comm.
-        rewrite e.
-        reflexivity.  
-        discriminate.
-        discriminate.
-      Qed.
-
-      Fixpoint lsMultiples(nMax numGroups curGroup : nat) :=
-        match nMax with
-        | O => nil
-        | S nMax' => (lsMultiples nMax' numGroups curGroup) ++ 
-        (if (isMultiple nMax' numGroups curGroup) then nMax'::nil else nil)
-         
-      end.
-
-      Theorem In_lsMultiples : forall nMax a x b,
-        (b < x)%nat ->
-        (a * x + b < nMax)%nat -> 
-        In (a * x + b)%nat (lsMultiples nMax x b).
-
-        induction nMax; intros; simpl in *.
-        lia.
-        destruct (eq_nat_dec (a*x + b) nMax).
-        subst.
-        apply in_or_app.
-        right.
-        rewrite isMultiple_true.
-        simpl.
-        intuition idtac.
-        apply in_or_app.
-        left.
-        eapply IHnMax.
-        eauto.
-        lia.
-
-      Qed.
-
-      Theorem In_lsMultiples_if : forall nMax a x b,
-        In a (lsMultiples nMax x b) -> 
-        (a < nMax)%nat.
-  
-        induction nMax; intros; simpl in *.
-        intuition idtac.
-        destruct (isMultiple nMax x b); intros.
-        apply in_app_or in H.
-        simpl in *.
-        intuition idtac.
-        eapply IHnMax in H0.
-        lia.
-        subst.
-        lia.   
-        rewrite app_nil_r in *.
-        apply IHnMax in H.
-        lia.
-  
-      Qed.
-
-
-      Fixpoint groupIndices_h(nMax numGroups curGroup : nat) :=
-        match curGroup with
-        | O => nil
-        | S curGroup' => 
-          (groupIndices_h nMax numGroups curGroup') ++ ((lsMultiples nMax numGroups curGroup') :: nil)
-        end.
-
-      Theorem flatten_app : forall (A : Type)(ls1 ls2 : list (list A)),
-        flatten (ls1 ++ ls2) = (flatten ls1 ++ flatten ls2).
-      
-        induction ls1; intros; simpl in *.
-        reflexivity.
-        rewrite <- app_assoc.
-        f_equal.
-        eauto.
-
-      Qed.
-
-      Theorem In_groupIndices_h : forall  b1 b2 a x nMax,
-        (b2 < b1)%nat -> 
-        (b2 < x)%nat ->
-        (a * x + b2 < nMax)%nat -> 
-        In (a * x + b2)%nat  (flatten (groupIndices_h nMax x b1)).
-
-        induction b1; intros; simpl in *.
-        lia.
-        
-        destruct (eq_nat_dec b2 b1).
-        subst.
-        rewrite flatten_app.
-        apply in_or_app.
-        simpl.
-        right.
-        apply in_or_app.
-        left.
-        eapply In_lsMultiples.
-        trivial.
-        trivial.
-        rewrite flatten_app.
-        apply in_or_app.
-        left.
-        eapply IHb1.
-        lia.
-        trivial.
-        trivial.
-      Qed.
-
-      Theorem In_groupIndices_h_if : forall  b1 a x nMax,
-        In a (flatten (groupIndices_h nMax x b1)) -> 
-        (a < nMax)%nat.
-
-        induction b1; intros; simpl in *.
-        intuition idtac.
-        rewrite flatten_app in *.
-        simpl in *.
-        rewrite app_nil_r in *.
-        assert (In a (flatten (groupIndices_h nMax x b1)) \/ In a (lsMultiples nMax x b1)).
-        eapply in_app_or.
-        eapply H.
-        intuition idtac.
-        eapply IHb1; eauto.
-        eapply In_lsMultiples_if; eauto.
-
-      Qed.
-
-      Theorem NoDup_app : forall (A : Type)(ls1 ls2 : list A),
-        NoDup ls1 -> 
-        NoDup ls2 -> 
-        (forall a, In a ls1 -> In a ls2 -> False) -> 
-        NoDup (ls1 ++ ls2).
-
-        induction ls1; intros; simpl in *.
-        trivial.
-        inversion H; clear H; subst.
-        eapply (@Permutation_NoDup _ (ls1 ++ (a :: ls2))).
-        eapply Permutation_sym.
-        eapply Permutation_middle.
-        eapply IHls1.
-        trivial.
-        econstructor.
-        intuition idtac.
-        eapply H1.
-        left.
-        reflexivity.
-        trivial.
-        trivial.
-        intuition idtac.
-        inversion H2; clear H2; subst.
-        intuition idtac.
-        eauto.
-
-      Qed.
-
-      Theorem lsMultiples_NoDup : forall nMax x a,
-        NoDup (lsMultiples nMax x a).
-
-        induction nMax; intros; simpl in *.
-        econstructor.
-        eapply NoDup_app.
-        eauto.
-        destruct (isMultiple nMax x a).
-        econstructor.
-        simpl.
-        intuition idtac.
-        econstructor.
-        econstructor.
-        intros.
-        apply In_lsMultiples_if in H.
-        destruct (isMultiple nMax x a); simpl in *.
-        intuition idtac; subst.
-        lia.
-        intuition idtac.
-
-      Qed.
-
-      Theorem in_lsMultiples_isMultiple : forall n x a b,
-        In x (lsMultiples n a b) ->
-        exists y, (x = y * a + b)%nat.
-
-        induction n; intros; simpl in *.
-        intuition idtac.
-        apply in_app_or in H.
-        intuition idtac.
-        eauto.
-        case_eq (isMultiple n a b); intros;
-        rewrite H in H0.
-        simpl in *.
-        intuition idtac; subst.
-        apply isMultiple_true_if.
-        trivial.
-        simpl in *; intuition idtac.
-
-      Qed.
-
-      Theorem in_groupIndices_h_isMultiple : forall b a x nMax,
-        In a (flatten (groupIndices_h nMax x b)) ->
-        exists y b', (b' < b /\ a = y * x + b')%nat.
-
-        induction b; intros; simpl in *.
-        intuition idtac.
-        rewrite flatten_app in *.
-        simpl in *.
-        rewrite app_nil_r in *.
-        apply in_app_or in H.
-        intuition idtac.
-        edestruct IHb.
-        eauto.
-        destruct H.
-        intuition idtac.
-        subst.
-        econstructor.
-        exists x1.
-        intuition idtac.
-        lia.
-        apply in_lsMultiples_isMultiple in H0.
-        destruct H0.
-        subst.
-        econstructor.
-        exists b.
-        intuition idtac.
-        lia.
-
-      Qed.
-  
-      Theorem mul_add_mod_ne : forall x a1 a2 b1 b2,
-        (b1 < x)%nat ->
-        (b2 < b1)%nat -> 
-        (a1 * x + b1)%nat = (a2 * x + b2)%nat ->
-        False.
-
-        intros.
-        rewrite Nat.mul_comm in H1.
-        rewrite (Nat.mul_comm a2) in H1.
-        apply Nat.div_mod_unique in H1.
-        intuition idtac.
-        lia.
-        lia.
-        lia.
-
-      Qed.
-
-      Theorem groupIndices_h_NoDup : forall  b x nMax,
-        (b <= x)%nat -> 
-        NoDup (flatten (groupIndices_h nMax x b)).
-
-        induction b; intros; simpl in *.
-        econstructor.
-        rewrite flatten_app.
-        simpl.
-        rewrite app_nil_r.
-        eapply NoDup_app.
-        eapply IHb.
-        lia.
-        apply lsMultiples_NoDup.
-
-        intros.
-        apply in_lsMultiples_isMultiple in H1.
-        apply in_groupIndices_h_isMultiple in H0.
-        destruct H0.
-        destruct H0.
-        destruct H1.
-        intuition idtac.
-        subst.
-        eapply mul_add_mod_ne; [idtac | idtac | eauto].
-        lia.
-        lia.
-
-      Qed.
-
-      Definition groupIndices nMax numGroups :=
-        groupIndices_h nMax numGroups numGroups.
-
-      Theorem groupIndices_perm : forall x y,
-        y <> O -> 
-        Permutation (seq 0 x) (flatten (groupIndices x y)).
-
-        intros.
-        eapply NoDup_Permutation.
-        apply seq_NoDup.
-        apply groupIndices_h_NoDup.
-        lia.
-
-        intros.
-        intuition idtac.
-        rewrite (Nat.div_mod_eq x0 y).
-        rewrite Nat.mul_comm.
-        unfold groupIndices.
-        eapply In_groupIndices_h.
-        apply Nat.mod_upper_bound.
-        intuition idtac.
-        apply Nat.mod_upper_bound.
-        intuition idtac.
-        rewrite Nat.mul_comm.
-        rewrite <- (Nat.div_mod_eq x0 y).
-        apply in_seq in H0.
-        lia.
-
-        apply in_seq.
-        apply In_groupIndices_h_if in H0.
-        lia.
-
-      Qed.
-
-
       Fixpoint endIndices_h(A : Type)(ls : list (list A))(x : nat) :=
         match ls with
         | nil => nil
@@ -3088,10 +3089,10 @@ Section GroupMulWNAF.
       | wm_Double n => Some (groupDouble_n (n * wsize) e)
       end.
 
-      Fixpoint groupMul_signedWindows_precomp (ws : list WindowedMultiplication) : option GroupElem :=
+      Fixpoint groupMul_signedWindows_precomp (e : GroupElem)(ws : list WindowedMultiplication) : option GroupElem :=
         match ws with
-        | nil => Some idElem
-        | w :: ws' => match (groupMul_signedWindows_precomp ws') with
+        | nil => Some e
+        | w :: ws' => match (groupMul_signedWindows_precomp e ws') with
           | None => None
           | Some x => 
             evalWindowMult_precomp p w x
@@ -3101,7 +3102,7 @@ Section GroupMulWNAF.
       Definition groupedMul_precomp ws :=
         match (permuteAndDouble ws numPrecompExponentGroups (flatten (groupIndices numWindows numPrecompExponentGroups)) (endIndices (groupIndices numWindows numPrecompExponentGroups))) with
         | None => None
-        | Some ps => (groupMul_signedWindows_precomp ps)
+        | Some ps => (groupMul_signedWindows_precomp idElem ps)
         end.
 
       
@@ -3151,13 +3152,13 @@ Section GroupMulWNAF.
 
       Theorem groupMul_signedWindows_precomp_equiv : forall l x, 
         Forall ProgOddWindow l -> 
-        groupMul_signedWindows_precomp l = Some x ->
+        groupMul_signedWindows_precomp idElem l = Some x ->
         groupMul_signedWindows_prog p l == x.
 
         induction l; intros; simpl in *.
         inversion H0; clear H0; subst.
         reflexivity.
-        case_eq (groupMul_signedWindows_precomp l ); intros;
+        case_eq (groupMul_signedWindows_precomp idElem l ); intros;
         rewrite H1 in H0.
         transitivity (evalWindowMult p a g).
         eapply evalWindowMult_compat.
@@ -3367,6 +3368,42 @@ Section GroupMulWNAF.
 
       Qed.
 
+      Fixpoint groupMul_signedWindows_precomp_ls e (ws : list (list WindowedMultiplication)) : option GroupElem :=
+        match ws with
+        | nil => Some e
+        | ls :: ws' =>
+          match (groupMul_signedWindows_precomp_ls e ws') with
+          | None => None
+          | Some e' => groupMul_signedWindows_precomp e' ls
+          end
+        end.
+
+      Theorem groupMul_signedWindows_precomp_app : forall ls1 ls2 e e', 
+        groupMul_signedWindows_precomp e ls2 = Some e' -> 
+        groupMul_signedWindows_precomp e (ls1 ++ ls2) =
+        groupMul_signedWindows_precomp e' ls1.
+
+        induction ls1; intros; simpl in *.
+        trivial.
+ 
+        rewrite (IHls1 _ _ e').
+        reflexivity.
+        trivial.
+
+      Qed.
+
+      Theorem groupMul_signedWindows_precomp_ls_equiv : forall ls e,
+        groupMul_signedWindows_precomp_ls e ls = groupMul_signedWindows_precomp e (flatten ls).
+
+        induction ls; intros; simpl in *.
+        reflexivity.
+
+        case_eq ( groupMul_signedWindows_precomp_ls e ls); intros.
+        
+
+      Qed.
+        
+          
       
 
 (*

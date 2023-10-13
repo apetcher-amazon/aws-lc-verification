@@ -505,13 +505,12 @@ Section ECEqProof.
   Proof.
 
       intros [ [[x y] z] Hp ]; simpl.
-      unfold prodToSeq, seqToProd, fromPoint, point_double, EC_P384_5.point_double; simpl.
-      repeat rewrite felem_sqr_spec.
-      unfold sawAt, atWithDefault. simpl.
+      unfold prodToSeq, seqToProd, fromPoint, point_double, EC_P384_5.point_double; simpl.      
       unfold nth_order, nth. simpl.
-
+      unfold sawAt, atWithDefault. simpl.
+      repeat rewrite felem_sqr_spec.
+    
       f_equal; intros.
-
       nsatz.
   
   Qed.
@@ -632,6 +631,98 @@ Section ECEqProof.
       rewrite ecEq_vec_bv_false; intuition.
 
   Qed.
+
+  Definition point_add_mixed := point_add true.
+
+  Definition isAffine (p : point) :=
+    (snd (proj1_sig p) = Fone).
+
+  Lemma point_add_mixed_eq_h : forall (a b:point),
+      isAffine b -> 
+      jac_eq (fromPoint (Jacobian.add a b))
+      (seqToProd (point_add_mixed (prodToSeq (fromPoint a)) (prodToSeq (fromPoint b)))).
+
+    intros [ [[xa ya] za] Ha ] [ [[xb yb] zb] Hb ]; intros; simpl.
+    unfold point_add_mixed, fromPoint, point_add, EC_P384_Abstract.point_add, EC_P384_5.point_add, ecNotEq, ecEq, ecZero, ecAnd, ecOr, ecCompl, felem_cmovznz; simpl.
+      repeat rewrite felem_sqr_spec.
+      unfold sawAt, atWithDefault. simpl.
+    
+      replace ((negb (if dec (xb * za ^ 2 - xa * zb ^ 2 = Fzero) then 0 else 1) &&
+     negb (if dec (yb * (za * za ^ 2) - zb * zb ^ 2 * ya + (yb * (za * za ^ 2) - zb * zb ^ 2 * ya) = Fzero) then 0 else 1) &&
+     (if dec (za = Fzero) then 0 else 1) && (if dec (zb = Fzero) then 0 else 1))%bool) with 
+      (testForDouble za zb (xb * za ^ 2 - xa * zb ^ 2)
+    (yb * (za * za ^ 2) - zb * zb ^ 2 * ya + (yb * (za * za ^ 2) - zb * zb ^ 2 * ya))).
+      unfold isAffine in *.
+      simpl in *.
+      subst zb.
+      replace (xb * za ^ 2 - xa * 1 ^ 2) with (xb * za ^ 2 - xa); try nsatz.
+      replace (yb * (za * za ^ 2) - 1 * 1 ^ 2 * ya + (yb * (za * za ^ 2) - 1 * 1 ^ 2 * ya)) with
+        (yb * (za * za ^ 2) - ya + (yb * (za * za ^ 2) - ya)); try nsatz.
+      case_eq (testForDouble za 1 (xb * za ^ 2 - xa) (yb * (za * za ^ 2) - ya + (yb * (za * za ^ 2) - ya))); intros.
+
+      replace (xa, ya, za) with (fromPoint
+       (exist (fun '(X, Y, Z) => if dec (Z = 0) then True else Y ^ 2 = X ^ 3 + a * X * (Z ^ 2) ^ 2 + b * (Z ^ 3) ^ 2)
+          (xa, ya, za) Ha)).
+      rewrite <- double_eq_minus_3.
+      rewrite seqToProd_inv.
+
+      eapply jac_eq_trans; [idtac | apply jacobian_eq_jac_eq; apply Jacobian.double_minus_3_eq_double].
+      apply jac_eq_refl_abstract.
+   
+      unfold Jacobian.double, fromPoint; simpl.
+      reflexivity.
+      trivial.
+
+      apply jac_eq_refl_abstract.
+      unfold Feq, seqToProd, nth_order, nth. simpl.
+      destruct (dec (1 = 0)); subst.
+      rewrite ecEq_bv_true.
+      reflexivity.
+      rewrite ecEq_bv_false.
+
+      destruct (dec (za = 0) ).
+      subst za.
+      rewrite ecEq_bv_true.
+      trivial.
+
+      rewrite ecEq_bv_false.
+      f_equal.
+      f_equal.
+      nsatz.
+      nsatz.
+      nsatz.
+      eapply felem_nz_neq_0. trivial.
+      eapply felem_nz_neq_0. trivial.
+
+      unfold testForDouble.
+      destruct (dec (xb * za ^ 2 - xa * zb ^ 2 = 0)).
+      simpl.
+      rewrite e.
+      rewrite <- rep_false_eq_int_bv.
+      
+      rewrite ecEq_vec_bv_true.
+      unfold ecAnd. simpl.
+      destruct (dec (yb * (za * za ^ 2) - zb * zb ^ 2 * ya + (yb * (za * za ^ 2) - zb * zb ^ 2 * ya) = 0)).
+      rewrite e0.
+      rewrite ecEq_vec_bv_true.
+      simpl.
+      destruct (dec (za = 0)).
+      rewrite e1.
+      rewrite ecNotEq_vec_bv_false.
+      trivial.
+      rewrite ecNotEq_vec_bv_true; intuition.
+      simpl.
+      destruct (dec (zb = 0)).
+      rewrite e1.
+      rewrite ecNotEq_vec_bv_false.
+      trivial.
+      rewrite ecNotEq_vec_bv_true; intuition.
+      rewrite ecEq_vec_bv_false; intuition.
+
+      simpl.
+      rewrite ecEq_vec_bv_false; intuition.
+    Qed.
+
 
   Theorem square_mul_eq : forall (x y : F),
     (x * y)^2 = x^2 * y^2.
@@ -941,6 +1032,46 @@ Section ECEqProof.
     eapply point_add_jac_eq_h.
     rewrite <- H1.
     rewrite <- H2.
+    repeat rewrite prodToSeq_inv.
+    apply jac_eq_refl.
+ 
+  Qed.
+
+  Lemma point_add_mixed_eq : forall (a b:point) a' b',
+    nth_order b' two_lt_three = Fone -> 
+    jac_eq (fromPoint a) (seqToProd a') ->
+    jac_eq (fromPoint b) (seqToProd b') -> 
+    jac_eq (fromPoint (Jacobian.add a b)) (seqToProd (point_add_mixed a' b')).
+
+    intros.  
+    edestruct (jac_eq_point_ex _ _ H0).
+    edestruct (jac_eq_point_ex _ _ H1).
+    
+    eapply jac_eq_trans.
+    eapply jacobian_eq_jac_eq.
+    eapply Jacobian.Proper_add.
+    eapply jac_eq_jacobian_eq.
+    rewrite H2 in H0.
+    eauto.
+    eapply jac_eq_jacobian_eq.
+    rewrite H3 in H1.
+    eauto.
+    eapply jac_eq_trans.
+    eapply point_add_mixed_eq_h.
+    unfold isAffine in *.
+    destruct x0.
+    simpl in *.
+    subst.
+    destruct (Vec_S_cons _ _ b'). destruct H.
+    destruct (Vec_S_cons _ _ x1). destruct H3.
+    destruct (Vec_S_cons _ _ x3). destruct H4.
+    subst.
+    rewrite (Vec_0_nil _ x5).
+    simpl.
+    reflexivity.
+    
+    rewrite <- H2.
+    rewrite <- H3.
     repeat rewrite prodToSeq_inv.
     apply jac_eq_refl.
  
@@ -3229,6 +3360,123 @@ Section ECEqProof.
     lia.
 
   Qed.
+
+  Definition point_mul_base := point_mul_base Fsquare Fmul Fsub Fadd Fopp.
+  Variable base_precomp_table : list (list affine_point).
+  Variable g : point.
+  Variable pExpMultiple : nat -> Z -> point.
+  Variable pMultiple : Z -> point.
+
+  Definition groupedMul_scalar_precomp numPrecompExponentGroups wsize nw s :=
+    match (groupedMul_precomp Jacobian.add zero_point Jacobian.double wsize nw g numPrecompExponentGroups pExpMultiple (recode_rwnaf wsize nw (Z.of_nat s))) with
+    | Some x => 
+      if (Nat.even s) then Some (Jacobian.add x (Jacobian.opp g)) else Some x
+    | None => None
+    end.
+
+
+  Theorem point_mul_base_abstract_model_equiv : forall (numPrecompExponentGroups wsize nw : nat) n x,
+    groupedMul_scalar_precomp numPrecompExponentGroups wsize nw (bvToNat _ n) = Some x ->
+    jac_eq (fromPoint x)
+  (seqToProd
+     (point_mul_base_abstract Fsquare Fmul Fsub Fadd Fopp (prodToSeq (fromPoint g)) base_precomp_table numPrecompExponentGroups wsize nw n)).
+
+    intros.
+    unfold point_mul_base_abstract, groupedMul_scalar_precomp in *.
+    case_eq (groupedMul_precomp Jacobian.add zero_point Jacobian.double wsize nw g
+        numPrecompExponentGroups preCompLookup
+        (recode_rwnaf wsize nw (Z.of_nat (bvToNat 384 n)))); intros.
+    rewrite H0 in H.
+    unfold conditional_subtract_if_even_mixed_abstract.
+    case_eq (Nat.even (bvToNat 384 n)); intros.
+    rewrite H1 in H.
+    inversion H; clear H; subst.
+    eapply point_add_mixed_eq.
+    (* g is affine *)
+    admit.
+
+    unfold groupedMul_precomp in *.
+    unfold permuteAndDouble in *.
+    unfold groupMul_signedWindows_precomp in *.
+
+    Search Jacobian.add.
+    Print point_add.
+    Print groupedMul_precomp.
+    Print groupMul_signedWindows_precomp.
+    Print evalWindowMult_precomp.
+  Qed.
+
+  Theorem point_mul_base_correct : forall (n : seq 384 Bool),
+      jac_eq (fromPoint (groupMul (bvToNat _ n) g))
+      (seqToProd (point_mul_base n)).
+
+    intros.
+    unfold point_mul_base.
+    rewrite (@point_mul_base_abstract_equiv _ _ _ _ _ (prodToSeq (fromPoint g)) base_precomp_table).
+    case_eq (groupedMul_precomp Jacobian.add zero_point Jacobian.double 5 77 g 4 preCompLookup (recode_rwnaf 5 77 (Z.of_nat (bvToNat _ n))) ); intros.
+    eapply jac_eq_trans; [idtac | 
+    eapply point_mul_base_abstract_model_equiv; eauto].
+    case_eq (groupedMul Jacobian.add zero_point Jacobian.double Jacobian.opp 5 77 g 4
+      (recode_rwnaf 5 77 (Z.of_nat (bvToNat 384 n))) ); intros.
+    assert (p == p0).
+    eapply (groupedMul_precomp_equiv _ _ _ _ _ _ _ _ _ _ _ H H0).
+    eapply jac_eq_symm.
+    eapply jacobian_eq_jac_eq.
+    rewrite H1.
+    assert (groupMul_signedWindows Jacobian.add zero_point Jacobian.double 5 pMultiple (recode_rwnaf 5 77 (Z.of_nat (bvToNat 384 n))) == p0).
+    eapply (groupedMul_correct _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ H0).
+    rewrite <- H2.
+
+    Print groupMul_signedRegularWindows.
+    specialize (@groupMul_signedRegularWindows_correct point jac_eq_setoid Jacobian.add Jacobian.Proper_add jac_add_assoc).
+    intros.
+    unfold groupMul_signedRegularWindows in *.
+    Search groupMul_signedRegularWindows.
+
+    Use facts about groupMul_signedRegularWindows, which is groupMul_signedWindows + recoding
+
+    specialize (@groupMul_signedWindows_correct point jac_eq_setoid Jacobian.add Jacobian.Proper_add jac_add_assoc).
+    intros.
+    rewrite H3.
+    erewrite groupMul_signedWindows_correct.
+    Search groupMul_signedWindows.
+    Search jac_eq.
+    Search groupedMul.
+    
+    eapply jac_eq_trans; [idtac | eapply point_mul_abstract_signedRegular_equiv].
+    unfold groupMul.
+    eapply jacobian_eq_jac_eq.
+
+    specialize (@groupMul_signedRegular_table_correct point jac_eq_setoid Jacobian.add Jacobian.Proper_add jac_add_assoc).
+    intros.  
+    rewrite H.
+    reflexivity.
+
+    apply jac_add_comm.
+    apply jac_add_id_l.
+    apply Jacobian.Proper_double.
+    apply jac_double_correct.
+    apply Proper_opp.
+    apply jac_opp_correct.
+    apply jac_opp_add_distr.
+    apply jac_opp_involutive.
+    lia.
+    lia.
+
+    eapply Z.lt_le_trans.
+    apply bvToNat_lt_word.
+    rewrite Z.shiftl_1_l.
+    eapply Z.pow_le_mono_r.
+    lia.
+    lia.
+    lia.
+    eapply Z.lt_le_trans.
+    apply bvToNat_lt_word.
+    rewrite Z.shiftl_1_l.
+    eapply Z.pow_le_mono_r.
+    lia.
+    lia.
+
 
   (* If we want to prove that the generic multiplication operation is correct, we need a group on generic points. *)
 
