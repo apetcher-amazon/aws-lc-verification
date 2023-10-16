@@ -3368,6 +3368,52 @@ Section GroupMulWNAF.
 
       Qed.
 
+      Fixpoint groupMul_signedWindows_prog' e (ws : list WindowedMultiplication) : GroupElem :=
+        match ws with
+        | nil => e
+        | w :: ws' => evalWindowMult p w (groupMul_signedWindows_prog' e ws')
+        end.
+
+      Fixpoint groupMul_signedWindows_prog_ls e (ws : list (list WindowedMultiplication)) : GroupElem :=
+        match ws with
+        | nil => e
+        | ls :: ws' => groupMul_signedWindows_prog' (groupMul_signedWindows_prog_ls e ws')  ls
+        end.
+
+      Theorem groupMul_signedWindows_prog'_app_equiv : forall ls1 ls2 e,
+        groupMul_signedWindows_prog' e (ls1 ++ ls2) = groupMul_signedWindows_prog' (groupMul_signedWindows_prog' e ls2) ls1.
+
+        induction ls1; intros; simpl in *.
+        reflexivity.
+  
+        rewrite IHls1.
+        reflexivity.
+
+      Qed.
+
+      Theorem groupMul_signedWindows_prog_ls_equiv : forall ls e,
+        groupMul_signedWindows_prog_ls e ls = groupMul_signedWindows_prog' e (flatten ls).
+
+        induction ls; intros; simpl in *.
+        reflexivity.
+
+        rewrite IHls.
+        rewrite groupMul_signedWindows_prog'_app_equiv.
+        reflexivity.
+
+      Qed.
+
+      Theorem groupMul_signedWindows_prog'_equiv : forall ls,
+        groupMul_signedWindows_prog' idElem ls = groupMul_signedWindows_prog p ls.
+
+        induction ls; intros; simpl in *.
+        reflexivity.
+        rewrite IHls.
+        reflexivity.
+
+      Qed.
+
+(*
       Fixpoint groupMul_signedWindows_precomp_ls e (ws : list (list WindowedMultiplication)) : option GroupElem :=
         match ws with
         | nil => Some e
@@ -3392,19 +3438,273 @@ Section GroupMulWNAF.
 
       Qed.
 
+      Theorem groupMul_signedWindows_precomp_app_None : forall ls1 ls2 e, 
+        groupMul_signedWindows_precomp e ls2 = None -> 
+        groupMul_signedWindows_precomp e (ls1 ++ ls2) = None.
+
+        induction ls1; intros; simpl in *.
+        trivial.
+ 
+        rewrite (IHls1).
+        reflexivity.
+        trivial.
+
+      Qed.
+
+      Theorem groupMul_signedWindows_precomp_ls_app : forall ls1 ls2 e e', 
+        groupMul_signedWindows_precomp_ls e ls2 = Some e' -> 
+        groupMul_signedWindows_precomp_ls e (ls1 ++ ls2) =
+        groupMul_signedWindows_precomp_ls e' ls1.
+
+        induction ls1; intros; simpl in *.
+        trivial.
+
+        rewrite (IHls1 _ _ e').
+        reflexivity.
+        trivial.
+
+      Qed.
+
+      Theorem groupMul_signedWindows_precomp_ls_app_None : forall ls1 ls2 e, 
+        groupMul_signedWindows_precomp_ls e ls2 = None -> 
+        groupMul_signedWindows_precomp_ls e (ls1 ++ ls2) = None.
+
+        induction ls1; intros; simpl in *.
+        trivial.
+
+        rewrite (IHls1).
+        reflexivity.
+        trivial.
+
+      Qed.
+
       Theorem groupMul_signedWindows_precomp_ls_equiv : forall ls e,
         groupMul_signedWindows_precomp_ls e ls = groupMul_signedWindows_precomp e (flatten ls).
 
-        induction ls; intros; simpl in *.
+        induction ls using rev_ind; intros; simpl in *.
         reflexivity.
+        rewrite flatten_app.
+        simpl.
+        case_eq (groupMul_signedWindows_precomp e x); intros.
+        rewrite (@groupMul_signedWindows_precomp_ls_app _ _ _ g).
+        rewrite (@groupMul_signedWindows_precomp_app _ _ _ g).
+        eauto.
+        rewrite app_nil_r.
+        trivial.
+        simpl.
+        trivial.
 
-        case_eq ( groupMul_signedWindows_precomp_ls e ls); intros.
+        rewrite groupMul_signedWindows_precomp_ls_app_None.
+        rewrite groupMul_signedWindows_precomp_app_None.
+        reflexivity.
+        rewrite app_nil_r.
+        trivial.
+        simpl.
+        trivial.
+
+      Qed.
+*)
+      
+      Fixpoint permuteAndDouble_groups ws d (perms : list (list nat)) :=
+        match perms with
+        | nil => Some nil
+        | perm :: perms' => 
+          match (multiSelect (signedWindowsToProg ws 0) perm) with
+          | None => None
+          | Some x =>
+            match (decrExpLs (length perms' * d) x) with
+            | None => None
+            | Some x' => 
+              match (permuteAndDouble_groups ws d perms') with
+              | None => None
+              | Some y => Some ((x' ++ (wm_Double d):: nil) :: y)
+              end
+            end
+          end
+        end.
+
+
+      Definition groupedMul_groups ws :=
+        match (permuteAndDouble_groups ws numPrecompExponentGroups (groupIndices numWindows numPrecompExponentGroups)) with
+        | None => None
+        | Some ps => Some (groupMul_signedWindows_prog_ls idElem ps)
+        end.
+
+      Theorem combineOpt_app : forall (A : Type)(ls1 ls2 : list (option A)) a1 a2,
+        combineOpt ls1 = Some a1 ->
+        combineOpt ls2 = Some a2 ->
+        combineOpt (ls1 ++ ls2) = Some (a1 ++ a2).
+
+        induction ls1; intros; simpl in *.
+        inversion H; clear H; subst.
+        simpl.
+        trivial.
+
+        destruct a.
+        case_eq (combineOpt ls1); intros.
+        rewrite H1 in H.
+        inversion H; clear H; subst.
+        erewrite IHls1.
+        simpl.
+        reflexivity.
+        eauto.
+        eauto.
+        rewrite H1 in H.
+        discriminate.
+        discriminate.
+
+      Qed.
+
+      Theorem multiSelect_app : forall (A : Type)(x : list A) ls1 ls2 a1 a2,
+        multiSelect x ls1 = Some a1 ->
+        multiSelect x ls2 = Some a2 ->
+        multiSelect x (ls1 ++ ls2) = Some (a1 ++ a2).
+
+        induction ls1; intros; simpl in *.
+        unfold multiSelect in *.
+        simpl in *.
+        inversion H; clear H; subst.
+        simpl.
+        trivial.
+      
+        unfold multiSelect in *.
+        simpl in *.
+        case_eq (nth_error x a); intros.
+        rewrite H1 in H.
+        case_eq (combineOpt (map (nth_error x) ls1)); intros.
+        rewrite H2 in H.
+        inversion H; clear H; subst.
+        rewrite map_app.
+        erewrite combineOpt_app; eauto.
+        simpl.
+        reflexivity.
+        rewrite H2 in H.
+        discriminate.
+        rewrite H1 in H.
+        discriminate.
+
+      Qed.
+
+      Theorem endIndices_h_map_plus : forall (A : Type)(x : list (list A)) n m,
+        endIndices_h x (m + n) = map (plus n) (endIndices_h x m).
+
+        induction x; intros; simpl in *.
+        reflexivity.
+        f_equal.
+        lia.
+        replace (length a + (m + n))%nat with ((length a + m) + n)%nat.
+        apply IHx.
+        lia.
+
+      Qed.
+
+      Theorem endIndices_h_map_plus_0 : forall (A : Type)(x : list (list A)) n,
+        endIndices_h x n = map (plus n) (endIndices_h x 0).
+
+        intros.
+        eapply (@endIndices_h_map_plus _ _ _ 0%nat).
+
+      Qed.
+
+      Theorem endIndices_cons : forall (A : Type)(x : list A) y,
+        endIndices (x :: y) = (map (plus (length x)) (endIndices y)) ++ (length x)::nil.
+
+        intros.
+        unfold endIndices in *.
+        simpl in *.
+        rewrite plus_0_r.
+        rewrite endIndices_h_map_plus_0.
+        destruct (endIndices_h y 0).
+        simpl.
+      
+
+      Qed.
+
+      Theorem insertDoublesAt_endIndices_app : forall (A : Type) ls1 ls2 (x : list A) y b,
+        length ls1 = length x -> 
+        insertDoublesAt numPrecompExponentGroups ls2 (endIndices y) = Some b ->
+        insertDoublesAt numPrecompExponentGroups (ls1 ++ ls2) (endIndices (x :: y)) = 
+        Some (ls1 ++ (wm_Double numPrecompExponentGroups :: b)).
+
+        intros.
+        unfold endIndices in *.
+        simpl.
+        rewrite plus_0_r.
+        
         
 
       Qed.
+
+      Theorem permuteAndDouble_groups_equiv : forall x ws ls,
+        permuteAndDouble_groups ws numPrecompExponentGroups x = Some ls ->
+        permuteAndDouble ws numPrecompExponentGroups (flatten x) (endIndices x) = Some (flatten ls).
+
+        induction x; intros; simpl in *.
+        inversion H; clear H; subst.
+        reflexivity.
+
+        unfold permuteAndDouble in *.
+        case_eq (multiSelect (signedWindowsToProg ws 0) a); intros.
+        rewrite H0 in H.
+        case_eq (decrExpLs (length x * numPrecompExponentGroups) l ); intros.
+        rewrite H1 in H.
+        case_eq (permuteAndDouble_groups ws numPrecompExponentGroups x); intros.
+        rewrite H2 in H.
+        inversion H; clear H; subst.
+        specialize (IHx ws l1).
+        intuition idtac.
+        case_eq (multiSelect (signedWindowsToProg ws 0) (flatten x) ); intros.
+        rewrite H3 in H.
+        erewrite multiSelect_app; eauto.
+        simpl.
+        unfold endIndices in *.
+        simpl.
+        rewrite plus_0_r.
+
+
+        rewrite rev_app_distr.
+        Search rev app.
+        rewrite app_rev.
+        apply H2 in IHx.
+         
         
-          
-      
+        unfold endIndices. simpl.
+        unfold permuteAndDouble.
+        simpl.
+        unfold groupIndices in *.
+        Print groupIndices_h.
+      Qed.
+
+      Theorem permuteAndDouble_groups_None_equiv : forall ws numWindows numPrecompExponentGroups,
+        permuteAndDouble_groups ws numPrecompExponentGroups (groupIndices numWindows numPrecompExponentGroups) = None ->
+        permuteAndDouble ws numPrecompExponentGroups (flatten (groupIndices numWindows numPrecompExponentGroups)) (endIndices (groupIndices numWindows numPrecompExponentGroups)) = None.
+      Admitted.
+
+      Theorem groupedMul_groups_equiv : forall ws,
+        groupedMul ws = groupedMul_groups ws.
+
+        intros.
+        unfold groupedMul, groupedMul_groups.
+        case_eq (permuteAndDouble_groups ws numPrecompExponentGroups
+    (groupIndices numWindows numPrecompExponentGroups)); intros.
+        erewrite permuteAndDouble_groups_equiv; eauto.
+        rewrite <- groupMul_signedWindows_prog'_equiv.
+        rewrite groupMul_signedWindows_prog_ls_equiv.
+        reflexivity.
+        rewrite permuteAndDouble_groups_None_equiv.
+        reflexivity.
+        trivial.
+      Qed.
+        
+        Search groupMul_signedWindows_prog.
+        
+        case_eq (permuteAndDouble ws numPrecompExponentGroups
+    (flatten (groupIndices numWindows numPrecompExponentGroups))
+    (endIndices (groupIndices numWindows numPrecompExponentGroups))); intros.
+  
+      Qed.
+        
+      here!
 
 (*
       Fixpoint appendN (n : nat)(A : Type)(ls : list (list A))(a : A) :=
