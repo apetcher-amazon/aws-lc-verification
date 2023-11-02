@@ -20,6 +20,7 @@ Require Import Permutation.
 
 From EC Require Import Zfacts.
 
+
 Fixpoint flatten (A : Type)(ls : list (list A)) : list A :=
   match ls with
   | nil => nil
@@ -28,6 +29,7 @@ Fixpoint flatten (A : Type)(ls : list (list A)) : list A :=
 
 Definition divides x y :=
   eq_nat_dec (gcd x y) x.
+
 
 (* returns true if v = k*x + y for some k, false otherwise*)
 Definition isMultiple v x y :=
@@ -51,6 +53,7 @@ Theorem isMultiple_true : forall a x b,
   lia.
 
 Qed.
+
 
 Theorem isMultiple_true_if : forall y x b,
   isMultiple y x b = true ->
@@ -426,6 +429,1043 @@ Theorem shiftl_to_nat_eq : forall n2 n1,
   
 Qed.
 
+Inductive WindowedMultiplication :=
+  | wm_Add : nat -> Z -> WindowedMultiplication
+  | wm_Double : nat -> WindowedMultiplication.
+
+Definition SignedWindow := Z.
+
+Fixpoint signedWindowsToProg (ws : list SignedWindow)(n : nat) :=
+  match ws with
+  | nil => nil
+  | w :: ws' => (wm_Add n w) :: (signedWindowsToProg ws' (S n))
+  end.
+
+
+(* Operations that preserve the value *)
+
+(* Insert a double at the head of the list and adjust exponents on remaining items *)
+Definition decrExp (n : nat)(p : WindowedMultiplication) :=
+  match p with
+  | wm_Add n' w =>
+    if (le_dec n n') then (Some (wm_Add (n' - n) w)) else None
+  | wm_Double n' => Some (wm_Double n')
+  end.
+
+Fixpoint decrExpLs (n : nat)(ps : list WindowedMultiplication) :=
+  match ps with
+  | nil => Some nil
+  | p :: ps' =>
+    match (decrExp n p) with
+    | None => None
+    | Some p' => 
+      match (decrExpLs n ps') with
+      | None => None
+      | Some ps'' =>
+        Some (p' :: ps'')
+      end
+    end
+  end.
+
+Definition insertDouble n ps :=
+  match (decrExpLs n ps) with
+  | Some ps' => Some ((wm_Double n) :: ps')
+  | None => None
+  end.
+
+Definition swapPair p1 p2 :=
+  match p1 with
+  | wm_Add n1 z1 =>
+    match p2 with
+    | wm_Add n2 z2 => Some (p2, p1)
+    | wm_Double n2 => 
+      if (le_dec n2 n1) then Some (p2, (wm_Add (n1 - n2) z1)) else None
+    end
+  | wm_Double n1 =>
+    match p2 with
+    | wm_Add n2 z2 => Some ((wm_Add (n1 + n2) z2),  p1)
+    | wm_Double n2 => Some (p2, p1)
+    end
+  end.
+
+Definition swapFront ps := 
+  match ps with 
+  | nil => None
+  | p1 :: ps' =>
+    match ps' with
+    | nil => None
+    | p2 :: ps'' =>
+      match (swapPair p1 p2) with
+      | None => None
+      | Some (a, b) => Some (a :: b ::  ps'')
+      end
+    end
+  end.
+
+Definition AddProg : list WindowedMultiplication -> Prop :=
+  Forall (fun x => match x with | wm_Add _ _ => True | _ => False end).
+
+
+Fixpoint combineOpt(A: Type)(ls : list (option A)) :=
+  match ls with
+  | nil => Some nil
+  | opta :: ls' => 
+    match opta with
+    | None => None
+    | Some a =>
+      match (combineOpt ls') with
+      | None => None
+      | Some ls'' => Some (a :: ls'')
+      end
+    end
+  end.
+
+Definition multiSelect(A : Type)(ls : list A)(lsn : list nat) : option (list A) :=
+  combineOpt (map (nth_error ls) lsn).
+
+Theorem combineOpt_perm_ex : forall (A : Type)(ls1 ls2 : list (option A)),
+  Permutation ls1 ls2 ->
+  forall ls1', 
+  combineOpt ls1 = Some ls1' ->
+  exists ls2', 
+  combineOpt ls2 = Some ls2' /\
+  Permutation ls1' ls2'.
+
+  induction 1; intros; simpl in *.
+  inversion H; clear H; subst.
+  exists nil.
+  intuition idtac.
+  econstructor.
+
+  destruct x; simpl in *.
+  remember (combineOpt l) as z.
+  destruct z.
+  inversion H0; clear H0; subst.
+  destruct (IHPermutation l0).
+  reflexivity.
+  intuition idtac.
+  exists (a :: x).
+  rewrite H1.
+  intuition idtac.
+  econstructor.
+  trivial.
+  discriminate.
+  discriminate.
+
+  destruct y; try discriminate.
+  destruct x; try discriminate.
+  remember (combineOpt l) as z1; destruct z1.
+  inversion H; clear H; subst.
+  exists (a0 :: a :: l0).
+  intuition idtac.
+  econstructor.
+  discriminate.
+
+  destruct (IHPermutation1 ls1').
+  trivial.
+  intuition idtac.
+  destruct (IHPermutation2 x).
+  trivial.
+  intuition idtac.
+  exists x0.
+  intuition idtac.
+  econstructor; eauto.
+
+Qed.
+
+Theorem nth_error_skipn_eq : forall n3 (A : Type)(ls : list A) n1,
+  (n3 <= n1)%nat ->
+  nth_error ls n1 = nth_error (skipn n3 ls) (n1 - n3).
+
+  induction n3; intros; simpl in *.
+  rewrite Nat.sub_0_r.
+  reflexivity.
+
+  destruct n1.
+  lia.
+  simpl.
+  
+  destruct ls.
+  symmetry.
+  apply nth_error_None.
+  simpl.
+  lia.
+  eapply IHn3.
+  lia.
+
+Qed.
+
+Theorem nth_error_seq_skipn_eq : forall n2 (A : Type)(ls : list A) n1 n3,
+  (n3 <= n1)%nat ->
+  map (nth_error ls) (seq n1 n2) = map (nth_error (skipn n3 ls)) (seq (n1 - n3) n2).
+
+  induction n2; intros; simpl in *.
+  trivial.
+  f_equal.
+  eapply nth_error_skipn_eq.
+  lia.
+  Search nth_error skipn.
+  specialize (IHn2 _ ls (S n1) n3).
+  rewrite IHn2.
+  replace (S n1 - n3)%nat with (S (n1 - n3)).
+  reflexivity.
+  lia.
+  lia.
+Qed.
+
+Theorem combineOpt_map_seq_eq : forall (A : Type)(ls : list A),
+  combineOpt (map (nth_error ls) (seq 0 (length ls))) = Some ls.
+
+  induction ls; intros; simpl in *.
+  reflexivity.
+  rewrite (@nth_error_seq_skipn_eq _ _ _ _ 1%nat).
+  simpl.
+  rewrite IHls.
+  reflexivity.
+  trivial.
+
+Qed.
+
+Theorem multiSelect_perm : forall (A : Type)(ls ls' : list A)(lsn : list nat),
+  Permutation lsn (seq O (length ls)) ->
+  multiSelect ls lsn = Some ls' ->
+  Permutation ls ls'.
+
+  intros.
+  unfold multiSelect in *.
+  assert (combineOpt (map (nth_error ls) (seq 0 (length ls))) = Some ls).
+  apply combineOpt_map_seq_eq.
+
+  eapply combineOpt_perm_ex in H0.
+  destruct H0.
+  intuition idtac.
+  rewrite H1 in H2.
+  inversion H2; clear H2; subst.
+  eapply Permutation_sym.
+  trivial.
+  apply Permutation_map.
+  trivial.
+
+Qed.
+
+Theorem multiSelect_in_range_Some : forall (A : Type)(ls : list A)(lsn : list nat),
+  (forall n, In n lsn -> n < length ls)%nat ->
+  exists ls', multiSelect ls lsn = Some ls'.
+
+  induction lsn; intros; simpl in *.
+  exists nil.
+  reflexivity.
+  edestruct (IHlsn).
+  intros.
+  apply H.
+  intuition idtac.
+  unfold multiSelect in *.
+  simpl.
+  case_eq (nth_error ls a); intros.
+  rewrite H0.
+  econstructor; eauto.
+  apply nth_error_None in H1.
+  specialize (H a).
+  intuition idtac.
+  lia.
+
+Qed.
+
+Theorem multiSelect_perm_Some : forall (A : Type)(ls : list A)(lsn : list nat),
+  Permutation lsn (seq O (length ls)) -> 
+  exists ls', multiSelect ls lsn = Some ls'.
+
+  intros.
+  apply multiSelect_in_range_Some.
+  intros.
+  eapply Permutation_in in H0; eauto.
+  apply in_seq in H0.
+  lia.
+  
+Qed.
+
+Fixpoint insertDoubleAt d (ls : list WindowedMultiplication)(n : nat) : option (list WindowedMultiplication) :=
+  match n with
+  | O => (insertDouble d ls)
+  | S n' => 
+    match ls with
+    | nil => None
+    | x :: ls' =>
+      match (insertDoubleAt d ls' n') with
+      | None => None
+      | Some ls'' => Some (x :: ls'')
+      end
+    end
+  end.
+
+Fixpoint insertDoublesAt d ls lsn :=
+  match lsn with
+  | nil => Some ls
+  | n :: lsn' => 
+    match (insertDoubleAt d ls n) with
+    | None => None
+    | Some ls' => insertDoublesAt d ls' lsn'
+    end
+  end.
+
+
+(* We can arbitrarily permute and insert accumulator doublings. If it succeeds, then the value computed 
+by this program will be the same as the basic windowed multiplication. *)
+Definition permuteAndDouble ws d (perm doubles : list nat) :=
+  match (multiSelect (signedWindowsToProg ws 0) perm) with
+  | None => None
+  | Some ps => insertDoublesAt d ps doubles
+  end.
+
+
+Fixpoint decrExpsLs n ps :=
+  match ps with
+  | nil => Some nil
+  | p :: ps' => 
+    match (decrExpsLs n ps') with
+    | None => None
+    | Some x => 
+      match (combineOpt (map (decrExpLs  n) x)) with
+      | None => None
+      | Some x' => Some (p :: x')
+      end
+    end
+  end.
+
+(* A specialization of the program above that only inserts doublings after each grouping *)
+Definition permuteAndDouble_grouped ws d (perm : list (list nat)) :=
+  match (combineOpt (map (multiSelect (signedWindowsToProg ws 0)) perm)) with
+  | None => None
+  | Some ps => 
+    match (decrExpsLs d ps) with
+    | None => None
+    | Some x => Some (map (fun x=> x ++ (wm_Double d)::nil ) x)
+    end
+  end.
+
+Theorem signedWindowsToProg_length : forall ws n,
+  length (signedWindowsToProg ws n) = length ws.
+
+  induction ws; intros; simpl in *. 
+  reflexivity.
+  f_equal.
+  eauto.
+
+Qed.
+
+Theorem signedWindowsToProg_AddProg : forall ws n,
+  AddProg (signedWindowsToProg ws n).
+
+  induction ws; intros; unfold AddProg in *; simpl in *.
+  econstructor.
+  econstructor.
+  trivial.
+  eapply IHws.
+
+Qed.
+
+Fixpoint endIndices_h(A : Type)(ls : list (list A))(x : nat) :=
+    match ls with
+    | nil => nil
+    | a :: ls' => 
+      ((length a) + x)%nat :: (endIndices_h ls' (length a + x))
+    end.
+
+  (* insert doublings from back to front so that it doesn't upset earlier indices *)
+  Definition endIndices(A : Type)(ls : list (list A)) :=
+    (rev (endIndices_h ls O)).
+
+  Theorem decrExpLs_app : forall ls1 ls2 d ls1' ls2',
+    decrExpLs d ls1 = Some ls1' ->
+    decrExpLs d ls2 = Some ls2' ->
+    decrExpLs d (ls1 ++ ls2) = Some (ls1' ++ ls2').
+
+    induction ls1; intros; simpl in *.
+    inversion H; clear H; subst.
+    simpl in *.
+    trivial.
+    case_eq (decrExpLs d ls1); intros.
+    rewrite H1 in H.
+    case_eq (decrExp d a); intros.
+    rewrite H2 in H.
+    inversion H; clear H; subst.
+    erewrite IHls1.
+    reflexivity.
+    trivial.
+    trivial.
+    rewrite H2 in H.
+    discriminate.
+    rewrite H1 in H.
+    destruct (decrExp d a).
+    discriminate.
+    discriminate.
+
+  Qed.
+
+  Theorem combineOpt_map : forall (A B : Type)(f : A -> B) x y,
+    combineOpt x = Some y ->
+    combineOpt (map (fun z => match z with | Some a => Some (f a) | None => None end) x) = Some (map f y).
+
+    induction x; intros; simpl in *.
+    inversion H; clear H; subst.
+    reflexivity.
+
+    destruct a; simpl in *.
+    case_eq (combineOpt x); intros.
+    rewrite H0 in H.
+    inversion H; clear H; subst.
+    erewrite IHx; eauto.
+    reflexivity.
+    rewrite H0 in H.
+    discriminate.
+    discriminate.
+
+  Qed.
+
+  Theorem combineOpt_In_not_None : forall (A : Type)(ls : list (option A)) a y,
+    combineOpt ls = Some y ->
+    In a ls ->
+    a <> None.
+
+    induction ls; intros; simpl in *.
+    intuition idtac.
+    destruct a.
+    intuition idtac.
+    subst.
+    discriminate.
+    subst.
+    case_eq (combineOpt ls); intros.
+    rewrite H0 in H.
+    inversion H; clear H; subst.
+    eapply IHls.
+    eauto.
+    eauto.
+    trivial.
+    rewrite H0 in H.
+    discriminate.
+    discriminate.
+
+  Qed.
+
+  Theorem permuteAndDouble_grouped_cons : forall a perm ws d ls,
+    permuteAndDouble_grouped ws d (a :: perm) = Some ls ->
+    exists ls1 a1 ls2 , permuteAndDouble_grouped ws d perm = Some ls1 /\
+    multiSelect (signedWindowsToProg ws 0) a = Some a1 /\
+    combineOpt (map (decrExpLs d) ls1) = Some ls2 /\
+    ls = (a1 ++ (wm_Double d):: nil)  :: ls2.
+    
+    intros.
+    unfold permuteAndDouble_grouped in *.
+    simpl in *.
+    case_eq (multiSelect (signedWindowsToProg ws 0) a ); intros.
+    rewrite H0 in H.
+    case_eq (combineOpt (map (multiSelect (signedWindowsToProg ws 0)) perm)); intros.
+    rewrite H1 in H.
+    simpl in *.
+    case_eq (decrExpsLs d l0); intros.
+    rewrite H2 in H.
+    
+    case_eq (combineOpt (map (decrExpLs d) l1)); intros.
+    rewrite H3 in H.
+    inversion H; clear H; subst.
+    exists (map
+   (fun x : list WindowedMultiplication => x ++ wm_Double d :: nil)
+   l1) .
+    exists l.
+    exists (map
+      (fun x : list WindowedMultiplication =>
+       x ++ wm_Double d:: nil) l2).
+    intuition idtac.
+    rewrite <- (combineOpt_map (fun x : list WindowedMultiplication => x ++ wm_Double d :: nil) (map (decrExpLs d) l1)); trivial.
+    f_equal.
+    repeat rewrite map_map.
+    eapply map_ext_in_iff.
+    intros.
+    case_eq (decrExpLs d a0); intros. 
+    erewrite decrExpLs_app; simpl; eauto.
+    exfalso.
+    eapply combineOpt_In_not_None;[eapply H3 | idtac | eapply H4].
+    eapply in_map_iff.
+    econstructor.
+    intuition idtac.
+  
+    rewrite H3 in H.
+    discriminate.
+    rewrite H2 in H.
+    discriminate.
+    rewrite H1 in H.
+    discriminate.
+    rewrite H0 in H.
+    discriminate.
+  Qed.
+
+  Theorem combineOpt_map_comm : forall (A : Type)(g : A -> A)(f : A -> option A) x y,
+    (forall a b, f (g a) = Some b -> exists c, (f a) = Some c /\ (g c) = b) -> 
+    combineOpt (map f (map g x)) = Some y ->
+    exists z, combineOpt (map f x) = Some z /\ y = map g z.
+
+    induction x; intros; simpl in *.
+    inversion H0; clear H0; subst.
+    exists nil. intuition idtac.
+    case_eq (f (g a)); intros.
+    rewrite H1 in H0.
+    case_eq (combineOpt (map f (map g x))); intros.
+    rewrite H2 in H0.
+    inversion H0; clear H0; subst.
+    edestruct IHx; eauto.
+    intuition idtac.
+    subst.
+    edestruct H; eauto.
+    intuition idtac; subst.
+    rewrite H4.
+    rewrite H3.
+    econstructor.
+    intuition idtac.
+    rewrite H2 in H0.
+    discriminate.
+    rewrite H1 in H0.
+    discriminate.
+  Qed.
+
+  Theorem decrExpLs_app_if : forall d x y z,
+    decrExpLs d (x ++ y) = Some z ->
+    exists a b, decrExpLs d x = Some a /\ decrExpLs d y = Some b /\ z = a ++ b.
+
+    induction x; intros; simpl in *.
+    exists nil, z.
+    intuition idtac.
+    case_eq (decrExp d a); intros;
+    rewrite H0 in H.
+    case_eq (decrExpLs d (x++y)); intros;
+    rewrite H1 in H.
+    inversion H; clear H; subst.
+    edestruct IHx; eauto.
+    destruct H.
+    intuition idtac; subst.
+    rewrite H2.
+    econstructor; econstructor; intuition eauto.
+    discriminate.
+    discriminate.
+
+  Qed.
+
+  Theorem permuteAndDouble_grouped_cons_if : forall a perm ws d ls1 a1 ls2,
+    permuteAndDouble_grouped ws d perm = Some ls1 ->
+    multiSelect (signedWindowsToProg ws 0) a = Some a1 ->
+    combineOpt (map (decrExpLs d) ls1) = Some ls2 ->
+    permuteAndDouble_grouped ws d (a :: perm) = Some ((a1 ++ (wm_Double d):: nil)  :: ls2).
+
+    intros.
+    unfold permuteAndDouble_grouped in *.
+    simpl.
+    rewrite H0.
+    case_eq (combineOpt (map (multiSelect (signedWindowsToProg ws 0)) perm)); intros;
+    rewrite H2 in H.
+    simpl.
+    case_eq (decrExpsLs d l); intros;
+    rewrite H3 in H.
+    inversion H; clear H; subst.
+    apply combineOpt_map_comm in H1.
+    destruct H1.
+    intuition idtac.
+    subst.
+    rewrite H1.
+    simpl.
+    reflexivity.
+
+    intros.
+    edestruct decrExpLs_app_if; eauto.
+    destruct H4.
+    intuition idtac; subst.
+    inversion H4; clear H4; subst.
+    econstructor.
+    intuition idtac; eauto.
+    discriminate.
+    discriminate.
+  Qed.
+
+  Theorem multiSelect_cons : forall (A : Type)(x : list A) y1 y2,
+    multiSelect x (y1 :: y2) = 
+    match (nth_error x y1) with
+    | Some y1' =>
+      match (multiSelect x y2) with
+      | Some y2' => Some (y1' :: y2')
+      | None => None
+      end
+    | None => None
+    end. 
+    
+    intros.
+    reflexivity.
+
+  Qed.
+
+  Theorem multiSelect_app : forall (A : Type)(x : list A) y1 y2,
+    multiSelect x (y1 ++ y2) = 
+    match (multiSelect x y1) with
+    | Some y1' => 
+      match (multiSelect x y2) with 
+      | Some y2' =>  Some (y1' ++ y2')
+      | None => None
+      end
+    | None => None
+     end.
+
+    induction y1; intros; simpl in *.
+    destruct (multiSelect x y2); trivial.
+    repeat rewrite multiSelect_cons.
+    rewrite IHy1.
+    case_eq (nth_error x a); intros.
+    case_eq (multiSelect x y1); intros.
+    case_eq (multiSelect x y2); intros.
+    simpl.
+    reflexivity.
+    reflexivity.
+    reflexivity.
+    reflexivity.
+
+  Qed.
+
+  Theorem insertDoubleAt_0 : forall d l1,
+    insertDoubleAt d l1 0 = insertDouble d l1.
+
+    induction l1; intros; simpl in *;
+    reflexivity.
+
+  Qed.
+
+  Theorem insertDoubleAt_app : forall l0 l1 d x,
+    insertDoubleAt d (l0 ++ l1) (length l0)  = Some x ->
+    exists y, decrExpLs d l1 = Some y /\
+    x = (l0 ++ (wm_Double d):: y).
+
+    induction l0; intros; simpl in *.
+    rewrite insertDoubleAt_0 in H.
+    unfold insertDouble in *.
+    case_eq (decrExpLs d l1); intros.
+    rewrite H0 in H.
+    inversion H; clear H; subst.
+    econstructor; eauto.
+    rewrite H0 in H.
+    discriminate.
+    case_eq (insertDoubleAt d (l0 ++ l1) (length l0) ); intros;
+    rewrite H0 in H.
+    inversion H; clear H; subst.
+    edestruct IHl0; eauto.
+    intuition idtac.
+    subst.
+    exists x.
+    intuition idtac.
+    discriminate.
+
+  Qed.
+
+  Theorem insertDoubleAt_ge : forall a l0 l1 d l,
+    (a >= length l0)%nat ->
+    insertDoubleAt d (l0 ++ l1) a = Some l ->
+    exists b l2, insertDoubleAt d l1 b = Some l2 /\
+    l = l0 ++ l2 /\ (a = (length l0) + b)%nat.
+
+    induction a; intros; simpl in *.
+    rewrite insertDoubleAt_0 in *.
+    replace l0 with (@nil WindowedMultiplication) in *.
+    simpl in *.
+    exists 0%nat.
+    exists l.
+    rewrite insertDoubleAt_0 in *.
+    intuition idtac.
+    destruct l0; simpl in *; trivial.
+    lia.
+
+    destruct l0; simpl in *.
+    exists (S a).
+    exists l.
+    intuition idtac.
+    case_eq (insertDoubleAt d (l0 ++ l1) a); intros;
+    rewrite H1 in H0.
+    inversion H0; clear H0; subst.
+    edestruct (IHa l0).
+    lia.
+    eauto.
+    destruct H0.
+    intuition idtac; subst.
+    exists x.
+    exists x0.
+    intuition idtac.
+    discriminate.
+
+  Qed.
+
+
+  Theorem insertDoubleAt_app_if : forall l0 l1 d x0 x,
+    insertDoubleAt d l1 x0 = Some x -> 
+    insertDoubleAt d (l0 ++ l1) (length l0 + x0) = Some (l0 ++ x).
+
+    induction l0; intros; simpl in *.
+    trivial.
+    erewrite IHl0.
+    reflexivity.
+    trivial.
+
+  Qed.
+
+
+  Theorem insertDoublesAt_app : forall lsn d l0 l1 x,
+    (forall n, In n lsn -> n >= length l0)%nat ->
+    insertDoublesAt d (l0 ++ l1) (lsn ++ length l0 :: nil)  = Some x -> 
+    exists y z, 
+    (insertDoublesAt d l1 (map (fun x => minus x (length l0)) lsn)) = Some y /\
+    decrExpLs d y = Some z /\
+    x = l0 ++ (wm_Double d)::z.
+
+    induction lsn; intros; simpl in *.
+    case_eq (insertDoubleAt d (l0 ++ l1) (length l0)); intros.
+    rewrite H1 in H0.
+    inversion H0; clear H0; subst.
+    edestruct insertDoubleAt_app; eauto.
+    rewrite H1 in H0.
+    discriminate.
+
+    case_eq (insertDoubleAt d (l0 ++ l1) a); intros.
+    rewrite H1 in H0.
+    apply insertDoubleAt_ge in H1.
+    destruct H1.
+    destruct H1.
+    intuition idtac; subst.
+    edestruct (IHlsn d l0).
+    intuition idtac.
+    eapply H.
+    intuition idtac.
+    eauto.
+    destruct H1.
+    intuition idtac; subst.
+    rewrite minus_plus.
+    rewrite H2.
+   
+    exists x2.
+    exists x3.
+    intuition idtac.
+    eapply H.
+    intuition idtac.
+    
+    rewrite H1 in H0.
+    discriminate.
+
+  Qed.
+
+  Theorem insertDoublesAt_app_if : forall lsn d l0 l1 y z,
+    (forall n, In n lsn -> n >= length l0)%nat ->
+    (insertDoublesAt d l1 (map (fun x => minus x (length l0)) lsn)) = Some y ->
+    decrExpLs d y = Some z ->
+     insertDoublesAt d (l0 ++ l1) (lsn ++ length l0 :: nil)  = Some (l0 ++ (wm_Double d)::z).
+
+    induction lsn; intros; simpl in *.
+    inversion H0; clear H0; subst.
+    replace (length l0) with (length l0 + 0)%nat.
+    erewrite insertDoubleAt_app_if.
+    reflexivity.
+    rewrite insertDoubleAt_0.
+    unfold insertDouble.
+    rewrite H1.
+    reflexivity.
+    lia.
+    
+    case_eq (insertDoubleAt d l1 (a - length l0) ); intros;
+    rewrite H2 in H0.
+    replace a with (length l0 + (a - length l0))%nat.
+    erewrite insertDoubleAt_app_if.
+    eapply IHlsn.
+    intros.
+    eapply H.
+    intuition idtac.
+    eauto.
+    trivial.
+    trivial.
+    specialize (H a).
+    intuition idtac.
+    lia.
+    discriminate.
+
+  Qed.
+
+  Theorem endIndices_h_map_sub : forall (A : Type)(ls : list (list A)) x y,
+    (y <= x)%nat ->
+    map (fun n => minus n y) (endIndices_h ls x) = endIndices_h ls (minus x y).
+
+    induction ls; intros; simpl in *.
+    reflexivity.
+    f_equal.
+    lia.
+    rewrite IHls.
+    f_equal.
+    lia.
+    lia.
+
+  Qed.
+
+  Theorem In_endIndices_h_ge : forall (A : Type)(ls : list (list A)) n m,
+    In n (endIndices_h ls m) ->
+    (n >= m)%nat.
+
+    induction ls; intros; simpl in *.
+    intuition idtac.
+    intuition idtac; subst.
+    lia.
+    eapply le_trans; [idtac |
+    eapply IHls; eauto].
+    lia.
+
+  Qed.
+
+  Theorem combineOpt_length : forall (A : Type)(ls : list (option A)) x,
+    combineOpt ls = Some x ->
+    length ls = length x.
+
+    induction ls; intros; simpl in *.
+    inversion H; clear H; subst.
+    trivial.
+    destruct a.
+    case_eq (combineOpt ls); intros;
+    rewrite H0 in H.
+    inversion H; clear H; subst.
+    simpl.
+    f_equal; eauto.
+    discriminate.
+    discriminate.
+
+  Qed.
+
+  Theorem multiSelect_length : forall (A : Type)(ls : list A) a b,
+    multiSelect ls a = Some b ->
+    length a = length b.
+
+    intros.
+    unfold multiSelect in *.
+    apply combineOpt_length in H.
+    rewrite map_length in H.
+    trivial.
+
+  Qed.
+
+  Theorem permuteAndDouble_flatten_app_cons : forall  ws d a perm x,
+    permuteAndDouble ws d (a ++ flatten perm) (endIndices (a :: perm))  = Some x ->
+    exists a1 x1 x2, multiSelect (signedWindowsToProg ws 0) a = Some a1 /\
+    permuteAndDouble ws d (flatten perm) (endIndices perm) = Some x1 /\
+    decrExpLs d x1 = Some x2 /\
+    x = a1 ++ (wm_Double d)::x2.
+
+    intros.
+    unfold permuteAndDouble in *.
+    case_eq (multiSelect (signedWindowsToProg ws 0) (a ++ flatten perm)); intros.
+    rewrite H0 in H.
+    rewrite multiSelect_app in *.
+    case_eq (multiSelect (signedWindowsToProg ws 0) a); intros.
+    rewrite H1 in H0.
+    exists l0.
+    case_eq (multiSelect (signedWindowsToProg ws 0) (flatten perm) ); intros.
+    rewrite H2 in H0.
+    inversion H0; clear H0; subst.
+    unfold endIndices in *.
+    simpl in *.
+    rewrite plus_0_r in *.
+    replace (length a) with (length l0) in H.
+    apply insertDoublesAt_app in H.
+    destruct H.
+    destruct H.
+    intuition idtac. subst.
+    rewrite map_rev in *.
+    rewrite endIndices_h_map_sub in *.
+    rewrite minus_diag in *.
+    exists x0.
+    exists x1.
+    intuition idtac.
+    lia.
+
+    intros.
+    apply in_rev in H0.
+    eapply In_endIndices_h_ge; eauto.
+    symmetry.
+    eapply multiSelect_length; eauto.
+    rewrite H2 in H0.
+    discriminate.
+    rewrite H1 in H0.
+    discriminate.
+    rewrite H0 in H.
+    discriminate.
+
+  Qed.
+
+  Theorem permuteAndDouble_flatten_app_cons_if : forall  ws d a perm a1 x1 x2,
+    multiSelect (signedWindowsToProg ws 0) a = Some a1 ->
+    permuteAndDouble ws d (flatten perm) (endIndices perm) = Some x1 -> 
+    decrExpLs d x1 = Some x2 -> 
+    permuteAndDouble ws d (a ++ flatten perm) (endIndices (a :: perm))  = Some (a1 ++ (wm_Double d)::x2).
+
+  intros.
+  unfold permuteAndDouble in *.
+  case_eq (multiSelect (signedWindowsToProg ws 0) (flatten perm) ); intros.
+  rewrite H2 in H0.
+  rewrite multiSelect_app.
+  rewrite H2.
+  rewrite H.
+  unfold endIndices. simpl.
+  rewrite plus_0_r.
+  replace (length a) with (length a1).
+  erewrite insertDoublesAt_app_if.
+  reflexivity.
+  intros.
+  eapply In_endIndices_h_ge.
+  eapply in_rev.
+  eauto.
+  rewrite map_rev.
+  erewrite endIndices_h_map_sub.
+  rewrite minus_diag.
+  eapply H0.
+  lia.
+  trivial.
+  symmetry.
+  eapply multiSelect_length.
+  eauto.
+  rewrite H2 in H0.
+  discriminate.
+  
+Qed.
+
+Theorem combineOpt_map_flatten : 
+  forall (A B : Type)(f : list A -> option (list B)) x x1,
+  combineOpt (map f x) = Some x1 ->
+  f nil = Some nil ->
+  (forall a b y z, f a = Some y -> f b = Some z -> f (a ++ b) = Some (y ++ z)) -> 
+  f (flatten x) = Some (flatten x1).
+
+  induction x; intros; simpl in *.
+  inversion H; clear H; subst.
+  simpl.  
+  trivial.
+
+  case_eq (f a); intros;
+  rewrite H2 in H.
+  case_eq (combineOpt (map f x)); intros;
+  rewrite H3 in H.
+  inversion H; clear H; subst.
+  simpl.
+  erewrite H1.
+  eauto.
+  trivial.
+  eapply IHx;
+  eauto.
+  
+  discriminate.
+  discriminate.
+
+Qed.
+
+    
+Theorem permuteAndDouble_grouped_equiv : forall perm ws d ls,
+  permuteAndDouble_grouped ws d perm = Some ls ->
+  permuteAndDouble ws d (flatten perm) (endIndices perm) = Some (flatten ls).
+
+  induction perm; intros; simpl in *.
+  inversion H; clear H; subst.
+  reflexivity.
+  apply permuteAndDouble_grouped_cons in H.
+  destruct H.
+  destruct H.
+  destruct H.
+  intuition idtac; subst.
+  apply IHperm in H0.
+  simpl.
+  erewrite permuteAndDouble_flatten_app_cons_if.
+  replace ((x0 ++ wm_Double d :: nil) ++ flatten x1) with (x0 ++ wm_Double d :: (flatten x1)).
+  reflexivity.
+  rewrite <- app_assoc.
+  simpl.
+  reflexivity.
+  trivial.
+  eauto.
+  eapply combineOpt_map_flatten in H1.
+  trivial.
+  reflexivity.
+  intros.
+  eapply decrExpLs_app; eauto.
+
+Qed.
+
+Definition stripOptLs(A : Type)(x: option (list A)) :=
+  match x with
+  | Some y => y
+  | None => nil
+  end. 
+
+
+Theorem decrExpLs_flatten : forall d x2 x1,
+  decrExpLs d (flatten x2) = Some x1 ->
+  flatten (map (fun x => stripOptLs (decrExpLs d x)) x2) = x1.
+
+  induction x2; intros; simpl in *.
+  inversion H; clear H; subst.
+  reflexivity.
+  apply decrExpLs_app_if in H.
+  destruct H.
+  destruct H.
+  intuition idtac; subst.
+  apply IHx2 in H.
+  subst.
+  f_equal.
+  rewrite H0.
+  reflexivity.
+
+Qed.
+
+Theorem decrExpLs_combineOpt : forall d x2 x1,
+  decrExpLs d (flatten x2) = Some x1 ->
+  combineOpt (map (decrExpLs d) x2) =
+  Some (map (fun x0 : list WindowedMultiplication => stripOptLs (decrExpLs d x0)) x2).
+
+  induction x2; intros; simpl in *.
+  reflexivity.
+  apply decrExpLs_app_if in H.
+  destruct H.
+  destruct H.
+  intuition idtac; subst.
+  rewrite H0.
+  erewrite IHx2; eauto.
+  
+Qed.
+
+Theorem permuteAndDouble_grouped_equiv_if : forall perm ws d ls,
+  permuteAndDouble ws d (flatten perm) (endIndices perm) = Some ls -> 
+  exists ls', permuteAndDouble_grouped ws d perm = Some ls' /\ flatten ls' = ls.
+
+  induction perm; intros; simpl in *.
+  unfold permuteAndDouble in *.
+  simpl in *.
+  inversion H; clear H; subst.
+  exists nil.
+  intuition idtac.
+  apply permuteAndDouble_flatten_app_cons in H.
+  destruct H.
+  destruct H.
+  destruct H.
+  intuition idtac.
+  subst.
+  apply IHperm in H.
+  destruct H.
+  intuition idtac; subst.
+  erewrite (@permuteAndDouble_grouped_cons_if _ _ _ _ _ x (map (fun x => stripOptLs (decrExpLs d x)) x2)); eauto.
+  econstructor.
+  intuition idtac; eauto.
+  simpl.
+  rewrite <- app_assoc.
+  f_equal.
+  simpl.
+  f_equal.
+  eapply decrExpLs_flatten; eauto.
+  eapply decrExpLs_combineOpt; eauto.
+  
+Qed.
+
+
 (* A simple definition of group multiplication, an optimized multiplication algorithm using 
 windowed non-adjacent form, and a proof of equivalence of the two. *)
 Section GroupMulWNAF.
@@ -693,8 +1733,6 @@ Section GroupMulWNAF.
   Hypothesis groupInverse_correct : forall e, groupAdd e (groupInverse e) == idElem.
   Hypothesis groupInverse_add_distr : forall e1 e2, groupInverse (groupAdd e1 e2) == groupAdd (groupInverse e1) (groupInverse e2).
   Hypothesis groupInverse_involutive : forall e, groupInverse (groupInverse e) == e.
-
-  Definition SignedWindow := Z.
 
   Theorem groupMul_doubleAdd_pos_succ : forall p e,
     groupMul_doubleAdd_pos (Pos.succ p) e ==
@@ -1107,9 +2145,6 @@ Section GroupMulWNAF.
     inversion H; trivial.
   Qed.
 
-  Inductive WindowedMultiplication :=
-    | wm_Add : nat -> Z -> WindowedMultiplication
-    | wm_Double : nat -> WindowedMultiplication.
 
   Definition evalWindowMult (m : WindowedMultiplication)(e : GroupElem) :=
     match m with
@@ -1138,12 +2173,6 @@ Section GroupMulWNAF.
     | w :: ws' => evalWindowMult w (groupMul_signedWindows_prog ws')
     end.
 
-  Fixpoint signedWindowsToProg (ws : list SignedWindow)(n : nat) :=
-    match ws with
-    | nil => nil
-    | w :: ws' => (wm_Add n w) :: (signedWindowsToProg ws' (S n))
-    end.
-
   Theorem groupMul_signedWindows_prog_equiv : forall ws n,
     groupMul_signedWindows_prog (signedWindowsToProg ws n) == groupMul_signedWindows_exp ws n.
 
@@ -1153,37 +2182,6 @@ Section GroupMulWNAF.
     reflexivity.
 
   Qed.
-
-  (* Operations that preserve the value *)
-
-  (* Insert a double at the head of the list and adjust exponents on remaining items *)
-  Definition decrExp (n : nat)(p : WindowedMultiplication) :=
-    match p with
-    | wm_Add n' w =>
-      if (le_dec n n') then (Some (wm_Add (n' - n) w)) else None
-    | wm_Double n' => Some (wm_Double n')
-    end.
-
-  Fixpoint decrExpLs (n : nat)(ps : list WindowedMultiplication) :=
-    match ps with
-    | nil => Some nil
-    | p :: ps' =>
-      match (decrExp n p) with
-      | None => None
-      | Some p' => 
-        match (decrExpLs n ps') with
-        | None => None
-        | Some ps'' =>
-          Some (p' :: ps'')
-        end
-      end
-    end.
-
-  Definition insertDouble n ps :=
-    match (decrExpLs n ps) with
-    | Some ps' => Some ((wm_Double n) :: ps')
-    | None => None
-    end.
 
   Theorem evalWindowMult_double_equiv : forall n a w e,
     (decrExp n a) = Some w ->
@@ -1254,35 +2252,6 @@ Section GroupMulWNAF.
     eapply insertDouble_equiv_h; eauto.
     discriminate.
   Qed.
-
-  Definition swapPair p1 p2 :=
-    match p1 with
-    | wm_Add n1 z1 =>
-      match p2 with
-      | wm_Add n2 z2 => Some (p2, p1)
-      | wm_Double n2 => 
-        if (le_dec n2 n1) then Some (p2, (wm_Add (n1 - n2) z1)) else None
-      end
-    | wm_Double n1 =>
-      match p2 with
-      | wm_Add n2 z2 => Some ((wm_Add (n1 + n2) z2),  p1)
-      | wm_Double n2 => Some (p2, p1)
-      end
-    end.
-
-  Definition swapFront ps := 
-    match ps with 
-    | nil => None
-    | p1 :: ps' =>
-      match ps' with
-      | nil => None
-      | p2 :: ps'' =>
-        match (swapPair p1 p2) with
-        | None => None
-        | Some (a, b) => Some (a :: b ::  ps'')
-        end
-      end
-    end.
 
   Theorem swapFront_equiv_h : forall w w0 w1 w2 ps,
     Some (w1, w2) = swapPair w w0 ->
@@ -1366,9 +2335,6 @@ Section GroupMulWNAF.
 
   Qed.
 
-  Definition AddProg : list WindowedMultiplication -> Prop :=
-    Forall (fun x => match x with | wm_Add _ _ => True | _ => False end).
-
   Theorem addProgPermEq : forall (ps1 ps2 : list WindowedMultiplication),
     Permutation ps1 ps2 ->
     AddProg ps1 ->
@@ -1403,208 +2369,6 @@ Section GroupMulWNAF.
     eauto.
 
   Qed.
-
-  Fixpoint combineOpt(A: Type)(ls : list (option A)) :=
-    match ls with
-    | nil => Some nil
-    | opta :: ls' => 
-      match opta with
-      | None => None
-      | Some a =>
-        match (combineOpt ls') with
-        | None => None
-        | Some ls'' => Some (a :: ls'')
-        end
-      end
-    end.
-
-  Definition multiSelect(A : Type)(ls : list A)(lsn : list nat) : option (list A) :=
-    combineOpt (map (nth_error ls) lsn).
-
-  Theorem combineOpt_perm_ex : forall (A : Type)(ls1 ls2 : list (option A)),
-    Permutation ls1 ls2 ->
-    forall ls1', 
-    combineOpt ls1 = Some ls1' ->
-    exists ls2', 
-    combineOpt ls2 = Some ls2' /\
-    Permutation ls1' ls2'.
-
-    induction 1; intros; simpl in *.
-    inversion H; clear H; subst.
-    exists nil.
-    intuition idtac.
-    econstructor.
-
-    destruct x; simpl in *.
-    remember (combineOpt l) as z.
-    destruct z.
-    inversion H0; clear H0; subst.
-    destruct (IHPermutation l0).
-    reflexivity.
-    intuition idtac.
-    exists (a :: x).
-    rewrite H1.
-    intuition idtac.
-    econstructor.
-    trivial.
-    discriminate.
-    discriminate.
-
-    destruct y; try discriminate.
-    destruct x; try discriminate.
-    remember (combineOpt l) as z1; destruct z1.
-    inversion H; clear H; subst.
-    exists (a0 :: a :: l0).
-    intuition idtac.
-    econstructor.
-    discriminate.
-
-    destruct (IHPermutation1 ls1').
-    trivial.
-    intuition idtac.
-    destruct (IHPermutation2 x).
-    trivial.
-    intuition idtac.
-    exists x0.
-    intuition idtac.
-    econstructor; eauto.
-
-  Qed.
-
-  Theorem nth_error_skipn_eq : forall n3 (A : Type)(ls : list A) n1,
-    (n3 <= n1)%nat ->
-    nth_error ls n1 = nth_error (skipn n3 ls) (n1 - n3).
-
-    induction n3; intros; simpl in *.
-    rewrite Nat.sub_0_r.
-    reflexivity.
-
-    destruct n1.
-    lia.
-    simpl.
-    
-    destruct ls.
-    symmetry.
-    apply nth_error_None.
-    simpl.
-    lia.
-    eapply IHn3.
-    lia.
-
-  Qed.
-  
-  Theorem nth_error_seq_skipn_eq : forall n2 (A : Type)(ls : list A) n1 n3,
-    (n3 <= n1)%nat ->
-    map (nth_error ls) (seq n1 n2) = map (nth_error (skipn n3 ls)) (seq (n1 - n3) n2).
-
-    induction n2; intros; simpl in *.
-    trivial.
-    f_equal.
-    eapply nth_error_skipn_eq.
-    lia.
-    Search nth_error skipn.
-    specialize (IHn2 _ ls (S n1) n3).
-    rewrite IHn2.
-    replace (S n1 - n3)%nat with (S (n1 - n3)).
-    reflexivity.
-    lia.
-    lia.
-  Qed.
-
-  Theorem combineOpt_map_seq_eq : forall (A : Type)(ls : list A),
-    combineOpt (map (nth_error ls) (seq 0 (length ls))) = Some ls.
-
-    induction ls; intros; simpl in *.
-    reflexivity.
-    rewrite (@nth_error_seq_skipn_eq _ _ _ _ 1%nat).
-    simpl.
-    rewrite IHls.
-    reflexivity.
-    trivial.
-  
-  Qed.
-
-  Theorem multiSelect_perm : forall (A : Type)(ls ls' : list A)(lsn : list nat),
-    Permutation lsn (seq O (length ls)) ->
-    multiSelect ls lsn = Some ls' ->
-    Permutation ls ls'.
-
-    intros.
-    unfold multiSelect in *.
-    assert (combineOpt (map (nth_error ls) (seq 0 (length ls))) = Some ls).
-    apply combineOpt_map_seq_eq.
-
-    eapply combineOpt_perm_ex in H0.
-    destruct H0.
-    intuition idtac.
-    rewrite H1 in H2.
-    inversion H2; clear H2; subst.
-    eapply Permutation_sym.
-    trivial.
-    apply Permutation_map.
-    trivial.
-
-  Qed.
-
-  Theorem multiSelect_in_range_Some : forall (A : Type)(ls : list A)(lsn : list nat),
-    (forall n, In n lsn -> n < length ls)%nat ->
-    exists ls', multiSelect ls lsn = Some ls'.
-
-    induction lsn; intros; simpl in *.
-    exists nil.
-    reflexivity.
-    edestruct (IHlsn).
-    intros.
-    apply H.
-    intuition idtac.
-    unfold multiSelect in *.
-    simpl.
-    case_eq (nth_error ls a); intros.
-    rewrite H0.
-    econstructor; eauto.
-    apply nth_error_None in H1.
-    specialize (H a).
-    intuition idtac.
-    lia.
-
-  Qed.
-
-  Theorem multiSelect_perm_Some : forall (A : Type)(ls : list A)(lsn : list nat),
-    Permutation lsn (seq O (length ls)) -> 
-    exists ls', multiSelect ls lsn = Some ls'.
-
-    intros.
-    apply multiSelect_in_range_Some.
-    intros.
-    eapply Permutation_in in H0; eauto.
-    apply in_seq in H0.
-    lia.
-    
-  Qed.
-
-  Fixpoint insertDoubleAt d (ls : list WindowedMultiplication)(n : nat) : option (list WindowedMultiplication) :=
-    match n with
-    | O => (insertDouble d ls)
-    | S n' => 
-      match ls with
-      | nil => None
-      | x :: ls' =>
-        match (insertDoubleAt d ls' n') with
-        | None => None
-        | Some ls'' => Some (x :: ls'')
-        end
-      end
-    end.
-
-  Fixpoint insertDoublesAt d ls lsn :=
-    match lsn with
-    | nil => Some ls
-    | n :: lsn' => 
-      match (insertDoubleAt d ls n) with
-      | None => None
-      | Some ls' => insertDoublesAt d ls' lsn'
-      end
-    end.
 
   Theorem insertDoubleAt_equiv : forall n d ls ls',
     insertDoubleAt d ls n = Some ls' ->
@@ -1645,35 +2409,6 @@ Section GroupMulWNAF.
     eapply insertDoubleAt_equiv; eauto.
     eauto.
     discriminate.
-  Qed.
-
-  (* We can arbitrarily permute and insert accumulator doublings. If it succeeds, then the value computed 
-  by this program will be the same as the basic windowed multiplication. *)
-  Definition permuteAndDouble ws d (perm doubles : list nat) :=
-    match (multiSelect (signedWindowsToProg ws 0) perm) with
-    | None => None
-    | Some ps => insertDoublesAt d ps doubles
-    end.
-
-  Theorem signedWindowsToProg_length : forall ws n,
-    length (signedWindowsToProg ws n) = length ws.
-
-    induction ws; intros; simpl in *. 
-    reflexivity.
-    f_equal.
-    eauto.
-
-  Qed.
-
-  Theorem signedWindowsToProg_AddProg : forall ws n,
-    AddProg (signedWindowsToProg ws n).
-
-    induction ws; intros; unfold AddProg in *; simpl in *.
-    econstructor.
-    econstructor.
-    trivial.
-    eapply IHws.
-
   Qed.
 
   Theorem permuteAndDouble_equiv : forall ws d perm doubles ps,
@@ -3026,17 +3761,7 @@ Section GroupMulWNAF.
       (* Start with an algorithm that performs the computation in the correct order, but doesn't do any table lookups. 
       This is the basic odd signed window multiplication operation with the additions permuted, and with some accumulator 
       doublings inserted. *)
-
-      Fixpoint endIndices_h(A : Type)(ls : list (list A))(x : nat) :=
-        match ls with
-        | nil => nil
-        | a :: ls' => 
-          ((length a) + x)%nat :: (endIndices_h ls' (length a + x))
-        end.
-
-      (* insert doublings from back to front so that it doesn't upset earlier indices *)
-      Definition endIndices(A : Type)(ls : list (list A)) :=
-        tl (rev (endIndices_h ls O)).
+      
 
       Variable pMultiple : SignedWindow -> GroupElem.
       Hypothesis pMultiple_correct : forall w,
@@ -3505,6 +4230,7 @@ Section GroupMulWNAF.
       Qed.
 *)
       
+(*
       Fixpoint permuteAndDouble_groups ws d (perms : list (list nat)) :=
         match perms with
         | nil => Some nil
@@ -3768,6 +4494,8 @@ Section GroupMulWNAF.
       Definition generatorMul_signedRegular_table n :=
         
       *)
+
+*)
 
     End GeneratorMulWNAF.
   End SignedWindowsWithTable.

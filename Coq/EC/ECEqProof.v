@@ -3374,6 +3374,43 @@ Section ECEqProof.
     | None => None
     end.
 
+  Theorem zero_point_jac_eq : 
+    jac_eq (fromPoint zero_point)
+     (seqToProd (replicate 3 (Vec 6 (bitvector 64)) (replicate 6 (bitvector 64) (intToBv 64 0)))).
+
+  Admitted.
+
+  Theorem point_mul_base_abstract_list_equiv : forall x (numPrecompExponentGroups groupsLeft wsize nw : nat) p n p1 p2,
+    List.length x = groupsLeft ->
+    jac_eq (fromPoint p1) (seqToProd p2) ->
+    groupMul_signedWindows_precomp Jacobian.add Jacobian.double wsize g numPrecompExponentGroups pExpMultiple
+       p1  (flatten x) = Some p ->
+    permuteAndDouble_grouped (recode_rwnaf wsize nw (Z.of_nat (bvToNat 384 n))) numPrecompExponentGroups
+       (groupIndices_h nw numPrecompExponentGroups groupsLeft) = Some x ->
+  jac_eq (fromPoint p)
+    (seqToProd
+       (List.fold_left
+          (double_add_base_abstract Fsquare Fmul Fsub Fadd Fopp base_precomp_table numPrecompExponentGroups wsize nw
+             (mul_scalar_rwnaf_abstract wsize (Nat.pred (Nat.pred (Nat.pred nw))) n))
+          (forNats groupsLeft)
+          p2
+    )).
+
+    induction x; intros; simpl in *.
+    inversion H1; clear H1; subst.
+    unfold forNats, List.fold_left.
+    trivial.
+  
+    destruct groupsLeft.
+    lia.
+    simpl in *.
+    Search groupMul_signedWindows_precomp.
+
+    Search permuteAndDouble_grouped app.
+    eapply IHx.
+    lia.
+  Qed.
+
 
   Theorem point_mul_base_abstract_model_equiv : forall (numPrecompExponentGroups wsize nw : nat) n x,
     groupedMul_scalar_precomp numPrecompExponentGroups wsize nw (bvToNat _ n) = Some x ->
@@ -3384,7 +3421,7 @@ Section ECEqProof.
     intros.
     unfold point_mul_base_abstract, groupedMul_scalar_precomp in *.
     case_eq (groupedMul_precomp Jacobian.add zero_point Jacobian.double wsize nw g
-        numPrecompExponentGroups preCompLookup
+        numPrecompExponentGroups pExpMultiple
         (recode_rwnaf wsize nw (Z.of_nat (bvToNat 384 n)))); intros.
     rewrite H0 in H.
     unfold conditional_subtract_if_even_mixed_abstract.
@@ -3396,7 +3433,26 @@ Section ECEqProof.
     admit.
 
     unfold groupedMul_precomp in *.
-    unfold permuteAndDouble in *.
+    case_eq (permuteAndDouble (recode_rwnaf wsize nw (Z.of_nat (bvToNat 384 n)))
+         numPrecompExponentGroups (flatten (groupIndices nw numPrecompExponentGroups))
+         (endIndices (groupIndices nw numPrecompExponentGroups))); intros.
+    rewrite H in H0.
+    eapply permuteAndDouble_grouped_equiv_if in H.
+    destruct H.
+    intuition idtac; subst.
+    unfold permuteAndDouble_grouped in *.
+    case_eq (combineOpt
+         (List.map (multiSelect (signedWindowsToProg (recode_rwnaf wsize nw (Z.of_nat (bvToNat 384 n))) 0))
+            (groupIndices nw numPrecompExponentGroups))); intros;
+    rewrite H3 in H2.
+    case_eq (decrExpsLs numPrecompExponentGroups l); intros;
+    rewrite H5 in H2.
+    inversion H2; clear H2; subst.
+    
+    case_eq (multiSelect (signedWindowsToProg (recode_rwnaf wsize nw (Z.of_nat (bvToNat 384 n))) 0)
+         (flatten (groupIndices nw numPrecompExponentGroups))); intros.
+    rewrite H3 in H2.
+    
     unfold groupMul_signedWindows_precomp in *.
 
     Search Jacobian.add.
