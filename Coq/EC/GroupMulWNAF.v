@@ -150,6 +150,97 @@ Theorem In_lsMultiples_if : forall nMax a x b,
 
 Qed.
 
+Theorem lsMultiples_gcd : forall nw m i, 
+  List.Forall (fun x : nat => Nat.gcd (x - i) m = m) (lsMultiples nw m i).
+
+  induction nw; intros; simpl in *.
+  econstructor.
+  eapply Forall_app.
+  intuition idtac.
+  eauto.
+  case_eq (isMultiple nw m i ); intros.
+  econstructor.
+  unfold isMultiple in *.
+  destruct ( ge_dec nw i). 
+  unfold divides in *.  
+  destruct (Nat.eq_dec (gcd m (nw - i)) m).
+  rewrite Nat.gcd_comm.
+  eauto.
+  discriminate.
+  discriminate.
+  econstructor.
+  econstructor.
+
+Qed.
+
+Theorem lsMultiples_div : forall nw m i, 
+  i < m ->
+  m > 0 ->
+  List.Forall (fun x : nat => Nat.div x m = Nat.div (x - i) m) (lsMultiples nw m i).
+
+  induction nw; intros; simpl in *.
+  econstructor.
+  eapply Forall_app.
+  intuition idtac.
+  eauto.
+  case_eq (isMultiple nw m i ); intros.
+  econstructor.
+  unfold isMultiple in *.
+  destruct (ge_dec nw i ).
+  destruct (divides m (nw - i)); intros.
+  assert (exists y, nw = i + y).
+  exists (nw - i).
+  lia.
+  destruct H2.
+  subst.
+  replace (i + x - i) with x in *.   
+  assert (exists y, x = y * m).
+  exists (Nat.div x m).
+  rewrite <- e at 1.
+  rewrite Nat.mul_comm.
+  rewrite <- Nat.gcd_div_swap.
+  rewrite e.
+  rewrite Nat.mul_comm.
+  rewrite Nat.div_same.
+  lia.
+  lia.
+  destruct H2.
+  subst.
+  rewrite Nat.div_add.
+  rewrite Nat.div_small.
+  rewrite Nat.div_mul.
+  lia.
+  lia.
+  lia.
+  lia.
+  lia.
+  discriminate.
+  discriminate.
+  econstructor.
+  econstructor.
+
+Qed.
+
+Theorem lsMultiples_length_weak : forall nw m i,
+  List.Forall (fun x : nat => x < nw) (lsMultiples nw m i).
+
+  induction nw; intros; simpl in *.
+  econstructor.
+  eapply Forall_app.
+  intuition idtac.
+  eapply Forall_impl; eauto.
+  intuition idtac; lia.
+  case_eq (isMultiple nw m i); intros.
+  unfold isMultiple in *.
+  destruct (ge_dec nw i).
+  econstructor.
+  lia.
+  econstructor.
+  discriminate.
+  econstructor.
+  
+Qed.
+
 
 Fixpoint groupIndices_h(nMax numGroups curGroup : nat) :=
   match curGroup with
@@ -4297,6 +4388,21 @@ Section GroupMulWNAF.
         eapply permuteAndDouble_OddWindow;
         eauto.
         trivial.
+
+      Qed.
+
+      Theorem groupedMul_precomp_groupedMul_Some: forall d ws x,
+        (length ws < numPrecompExponentGroups * precompTableSize)%nat -> 
+        Forall OddWindow ws -> 
+        groupedMul_precomp d ws = Some x -> 
+        groupedMul d ws = None ->
+        False.
+
+        intros.
+        unfold groupedMul_precomp, groupedMul in *.
+        optSomeInv.
+        rewrite H3 in H2.
+        discriminate.
 
       Qed.
 

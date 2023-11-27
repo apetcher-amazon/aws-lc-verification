@@ -469,8 +469,6 @@ Section PointMul.
 
   Section PointMulBase.
 
-    Variable g : point.
-
     Definition double_add_base := double_add_base felem_sqr felem_mul felem_sub felem_add felem_opp.
     Definition point_mul_base := point_mul_base felem_sqr felem_mul felem_sub felem_add felem_opp.
     Definition point_double := point_double felem_sqr felem_mul felem_sub felem_add.
@@ -507,7 +505,7 @@ Section PointMul.
     Qed.
 
     Import VectorNotations. 
-
+  
     Definition select_point_affine_abstract x t :=
       fold_left
       (fun acc p =>
@@ -549,16 +547,16 @@ Section PointMul.
       intuition eauto.
     Qed.
 
-    Definition add_base_abstract(rnaf : list (Vector.t bool 16))(p : point)(j : nat) : point :=
+    Definition add_base_abstract numPrecompExponenGroups (rnaf : list (Vector.t bool 16))(p : point)(j : nat) : point :=
       let window  := nth j rnaf (vecRepeat false 16) in
-      let selected   := select_point_affine_abstract (sign_extend_16_64 (bvSShr _ (bvAdd _ (shiftR _ _ false window 15) (bvXor _ window (bvSShr _ window 15%nat))) 1%nat)) (nth (Nat.div j 4%nat) base_precomp_table nil) in
+      let selected   := select_point_affine_abstract (sign_extend_16_64 (bvSShr _ (bvAdd _ (shiftR _ _ false window 15) (bvXor _ window (bvSShr _ window 15%nat))) 1%nat)) (nth (Nat.div j numPrecompExponenGroups) base_precomp_table nil) in
       let x_coord   :=nth_order  selected zero_lt_two in
       let y_coord   :=nth_order  selected one_lt_two in
       point_add true p [x_coord; felem_cmovznz (point_id_to_limb (bvShr _ window 15)) y_coord (felem_opp y_coord); p384_felem_one].
 
     Theorem add_base_abstract_equiv : forall rnaf p i,
       (bvToNat _ i < 77)%nat -> 
-      add_base_abstract (to_list rnaf) p (bvToNat _ i) = add_base rnaf p i.
+      add_base_abstract 4 (to_list rnaf) p (bvToNat _ i) = add_base rnaf p i.
 
       intros.
       unfold add_base_abstract, add_base, EC_P384_5.add_base.
@@ -773,7 +771,7 @@ Section PointMul.
       (i : nat) 
         : point :=
     let doubled   := if (eq_nat_dec i (pred numPrecompExponentGroups))  then p else fold_left (fun x _ => point_double x) (forNats wsize) p  in
-      fold_left (add_base_abstract rnaf) (List.rev (lsMultiples nw numPrecompExponentGroups i)) doubled.
+      fold_left (add_base_abstract numPrecompExponentGroups rnaf) (List.rev (lsMultiples nw numPrecompExponentGroups i)) doubled.
 
     Definition p384_g_pre_comp_gen := p384_g_pre_comp.
     Local Opaque p384_g_pre_comp_gen.
@@ -1063,9 +1061,13 @@ Section PointMul.
       reflexivity.
       reflexivity.
 
-      (* This QED takes a while --- could probably improve this with some induction instead of computation *)
+      (* This QED takes a minute or so --- could probably improve this with some induction instead of computation *)
 
     Qed.
+
+    Variable affine_default : Vec 2 felem.
+
+    Definition affine_g := Vector.append (nth 0 (nth 0 base_precomp_table nil) affine_default) [p384_felem_one].
 
     Definition point_mul_base_abstract (numPrecompExponentGroups wsize nw : nat)  s :=
       conditional_subtract_if_even_mixed_abstract 
@@ -1073,12 +1075,7 @@ Section PointMul.
          (double_add_base_abstract numPrecompExponentGroups wsize nw (mul_scalar_rwnaf_abstract wsize (pred (pred (pred nw))) s))
           (forNats numPrecompExponentGroups)
           (replicate 3 (Vec 6 (bitvector 64)) (replicate 6 (bitvector 64) (intToBv 64 0)))
-      ) s g.
-
-  (* TODO: don't assume g is affine *)
-  Hypothesis pre_comp_g_equiv : 
-    Vector.append (nth 0 (nth 0 base_precomp_table nil) [zero_felem; zero_felem]) [p384_felem_one] = g.
-
+      ) s affine_g.
 
   Theorem point_mul_base_abstract_equiv : forall s,
     point_mul_base s = point_mul_base_abstract 4 5 77 s.
@@ -1089,7 +1086,7 @@ Section PointMul.
     replace (append
      (sawAt 16 (Vec 2 (Vec 6 (bitvector 64)))
         (sawAt 20 (Vec 16 (Vec 2 (Vec 6 (bitvector 64)))) p384_g_pre_comp 0) 0)
-     [p384_felem_one]) with g in *.
+     [p384_felem_one]) with affine_g in *.
     intros.
     rewrite conditional_subtract_if_even_mixed_equiv.
 
@@ -1122,7 +1119,7 @@ Section PointMul.
       replace (bvToNat 64 (intToBv 64 0))%nat with (0)%nat
     end; simpl; try lia; try reflexivity.
 
-    rewrite <- pre_comp_g_equiv.
+    unfold affine_g.
     rewrite base_precomp_table_nth_eq.
     rewrite (@sawAt_nth_equiv _ _ 16).
     reflexivity.

@@ -53,7 +53,7 @@ Section ECEqProof.
   Definition F := seq 6 (seq 64 Bool).
 
   Definition Fzero : F := (replicate 6 _ (replicate 64 _ false)).
-  Variable Fone  : F.
+  Variable Fone : F.
   Variable Fopp  : F -> F.
   Variable Fadd  : F -> F -> F.
   Variable Fsub  : F -> F -> F.
@@ -1072,6 +1072,29 @@ Section ECEqProof.
       eapply app_cons_not_nil.
       symmetry.
       eauto.
+
+  Qed.
+
+  Theorem decrExpsLs_length : forall d x y,
+    decrExpsLs d x = Some y ->
+    Datatypes.length x = Datatypes.length y.
+
+    induction x; intros; simpl in *.
+    inversion H; clear H; subst.
+    reflexivity.
+    case_eq (decrExpsLs d x); intros;
+    rewrite H0 in H.
+    case_eq (combineOpt (List.map (decrExpLs d) l)); intros;
+    rewrite H1 in H.
+    inversion H; clear H; subst.
+    simpl.
+    f_equal.
+    apply combineOpt_length in H1.
+    rewrite map_length in *.
+    rewrite <- H1.
+    eapply IHx; eauto.
+    discriminate.
+    discriminate.
 
   Qed.
 
@@ -2150,6 +2173,36 @@ Section ECEqProof.
     destruct p. 
     apply jac_eq_refl.
   Qed.
+  
+  Ltac destructVec := repeat (match goal with
+    | [H : exists _, _ |- _ ] => destruct H
+    | [p : seq _ _ |- _ ] => unfold seq in p; simpl in p
+    | [p : Vec _ _ |- _ ] => unfold Vec in *
+    | [p : t _ _ |- _ ] => destruct (Vec_S_cons _ _ p)
+    | [p : t _ _ |- _ ] => rewrite (@Vec_0_nil _ p) in *; clear p
+    end; subst).
+
+  Theorem point_opp_jac_eq_proper : forall p1 p2,
+    jac_eq (seqToProd p1) (seqToProd p2) ->
+    jac_eq 
+      (seqToProd (point_opp p1))
+       (seqToProd (point_opp p2)).
+
+    intros.
+    unfold point_opp, EC_P384_Abstract.point_opp.
+    unfold jac_eq in *.
+    destructVec.
+    simpl in *.
+    unfold nth_order in *.
+    simpl in *.
+    repeat erewrite sawAt_nth_equiv; try lia.
+    simpl.
+    destruct (dec (Feq x4 0)).
+    trivial.
+    intuition idtac.
+    nsatz.
+
+  Qed.
 
   Theorem map_bvAdd_0 : forall n ls,
     (List.map (bvAdd n (bvNat n 0%nat)) ls) = ls.
@@ -2826,7 +2879,7 @@ Section ECEqProof.
     intros.
     unfold double_add_body_abstract.
 
-    rewrite select_point_abstract_nth_equiv.
+    rewrite (select_point_abstract_nth_equiv).
     unfold groupMul_signedWindows_fold_body.
     unfold groupAdd_signedWindow.
     match goal with
@@ -3444,39 +3497,252 @@ Section ECEqProof.
   Definition point_mul_base := point_mul_base Fsquare Fmul Fsub Fadd Fopp.
   Variable base_precomp_table : list (list affine_point).
   Variable g : point.
-  Definition affine_zero := (cons F 0 1 (cons F 0 0 (nil F))).
+  Variable affine_default : affine_point.
   Definition affineToJac (a : affine_point) : Vec 3 F :=
     (append _ _ _ a (cons _ Fone 0 (@nil F))).
 
+  Definition on_curve (p : affine_point ) : Prop :=
+    let x := nth_order p zero_lt_two in
+    let y := nth_order p one_lt_two in 
+    Feq (y^2) (x^3 + a * x + b).
+
+  Hypothesis affine_default_on_curve : on_curve affine_default.
+
   Theorem affineIsJacobian : forall affinePt,
+    on_curve affinePt -> 
     is_jacobian (seqToProd (affineToJac affinePt)).
 
-  Admitted.
-
-  
- 
-  Definition pExpMultiple (n : nat) (x : Z) : point := 
-    let absPt := List.nth (Z.to_nat (Z.div2 (Z.abs x))) (List.nth n base_precomp_table List.nil) affine_zero in
-    let affinePt :=  if (ZArith_dec.Z_lt_ge_dec x 0) then (affineOpp absPt) else absPt in
-    toPoint (seqToProd (affineToJac affinePt)) (affineIsJacobian affinePt).
+    intros.
+    unfold affineToJac, is_jacobian, on_curve in *.
+    simpl.
+    replace (nth_order (append 2 1 felem affinePt (cons F 1 0 (nil F))) two_lt_three)  with 1.
+    destruct (dec (Feq 1 0)).
+    trivial.
+    replace (b * (1 ^ 3) ^ 2) with b.
+    replace (a * nth_order (append 2 1 felem affinePt (cons F 1 0 (nil F))) zero_lt_three * (1 ^ 2) ^ 2) with (a * nth_order (append 2 1 felem affinePt (cons F 1 0 (nil F))) zero_lt_three).
+    erewrite (@nth_order_append_l_eq _ _ 1%nat _ 2%nat _ _ _ one_lt_two ).  
+    repeat erewrite (@nth_order_append_l_eq _ _ 1%nat _ 2%nat _ _ _ zero_lt_two ).
+    apply H.
+    nsatz.
+    nsatz.
+    Search nth_order append.
+    symmetry.
+    erewrite (@nth_order_append_eq felem _ 1%nat (cons F 1 0 (nil F)) 2%nat affinePt 0%nat two_lt_three ).
+    reflexivity.
     
-  Definition numPrecompExponentGroups : nat := 4%nat.
-  Variable precompTableSize : nat.
+    Unshelve. 
+    lia.
+
+  Qed.
+
+  Theorem affineOpp_on_curve : forall p,
+    on_curve p -> 
+    on_curve (affineOpp p).
+
+    unfold on_curve, affineOpp in *.
+    intros.
+    unfold nth_order in *.
+    simpl in *.
+    replace (Fopp (nth p (Fin.FS Fin.F1)) ^ 2) with ( (nth p (Fin.FS Fin.F1)) ^ 2).
+    trivial.
+    nsatz.
+
+  Qed.
+
+  Definition affineOppIfNegative z p :=
+     if (ZArith_dec.Z_lt_ge_dec z 0) then (affineOpp p) else p.
+
+  Theorem affineOppIfNegative_on_curve : forall z p,
+    on_curve p -> 
+    on_curve (affineOppIfNegative z p).
+
+    intros.
+    unfold affineOppIfNegative.
+    destruct (ZArith_dec.Z_lt_ge_dec z 0); trivial.
+     eapply affineOpp_on_curve; eauto.
+
+  Qed.
+
+  Definition affinePointLookup (n m : nat) :=
+    List.nth n (List.nth m base_precomp_table List.nil) affine_default.
+
+  Hypothesis base_precomp_table_on_curve : 
+    forall ls p, 
+    List.In p ls -> 
+    List.In ls base_precomp_table -> 
+    on_curve p.
+
+
+  Theorem affinePointLookup_on_curve : forall n m,
+    on_curve (affinePointLookup n m).
+ 
+    intros.
+    unfold affinePointLookup.
+    destruct (dec (n < (List.length (List.nth m base_precomp_table []) ))).
+    eapply Forall_nth; trivial.
+    eapply List.Forall_forall.
+    intros.
+    destruct (dec (m < List.length base_precomp_table)).
+    eapply base_precomp_table_on_curve.
+    eauto.
+    apply nth_In.
+    lia.
+    rewrite nth_overflow in H.
+    simpl in *.
+    intuition idtac.
+    lia.
+    rewrite nth_overflow.
+    eauto.
+    lia.
+
+  Qed.
+
+  Definition pExpMultiple (n : nat) (x : Z) : point := 
+    let absPt := affinePointLookup (Z.to_nat (Z.div2 (Z.abs x))) n in
+    let affinePt :=  affineOppIfNegative x absPt in
+    toPoint (seqToProd (affineToJac affinePt)) (affineIsJacobian (affineOppIfNegative_on_curve _ (affinePointLookup_on_curve _ _ ))).
+    
+  Definition numPrecompExponentGroups : nat := (Nat.pred wsize).
+
+  Definition precompTableSize : nat := List.length base_precomp_table.
 
   Variable pMultiple : Z -> point.
-
+  Hypothesis pMultiple_correct : forall w,
+    OddWindow wsize w ->
+    pMultiple w == groupMul_doubleAdd_signed Jacobian.add zero_point Jacobian.double Jacobian.opp w g.
 
   Hypothesis base_precomp_table_correct : forall n1 n2,
-    jac_eq (seqToProd (affineToJac (List.nth n2 (List.nth n1 base_precomp_table List.nil) affine_zero))) (fromPoint (groupMul ((2 * n2 + 1) * (Nat.pow 2 (n1 * numPrecompExponentGroups * wsize))) g)).
+    (n1 < precompTableSize)%nat ->
+    (n2 < Nat.pow 2 numPrecompExponentGroups)%nat-> 
+    jac_eq (seqToProd (affineToJac (List.nth n2 (List.nth n1 base_precomp_table List.nil) affine_default))) (fromPoint (groupMul ((2 * n2 + 1) * (Nat.pow 2 (n1 * numPrecompExponentGroups * wsize))) g)).
 
+  Hypothesis base_precomp_table_entry_length : 
+    forall ls, List.In ls base_precomp_table -> List.length ls = Nat.pow 2 numPrecompExponentGroups.
 
-  Theorem affineOpp_toPoint_eq :  forall p pf1 pf2,
-    toPoint
+  Theorem affineOpp_toPoint_eq :  forall p,
+    jac_eq
   (seqToProd
      (affineToJac
-        (affineOpp p))) pf1 == Jacobian.opp (toPoint (seqToProd (affineToJac p)) pf2).
+        (affineOpp p))) 
+   (seqToProd (point_opp (affineToJac p))).
 
-  Admitted.
+    intros.
+    unfold point_opp, EC_P384_Abstract.point_opp.
+    unfold affineOpp, affineToJac.
+    unfold affine_point in *.
+    unfold nth_order in *.
+    simpl.
+    repeat rewrite sawAt_nth_equiv; try lia.
+    unfold nth_order.
+    simpl.
+    repeat rewrite sawAt_nth_equiv; try lia.
+    unfold nth_order.
+    simpl.
+    destructVec.
+    simpl.
+    destruct (dec (Feq 1 0)).
+    trivial.
+    intuition idtac.
+    reflexivity.
+    reflexivity.
+
+  Qed.
+
+  Theorem Z_odd_abs_eq : forall z,
+    Z.odd (Z.abs z) = Z.odd z.
+
+    intros.
+    destruct z; simpl in *;
+    reflexivity.
+
+  Qed.
+  
+  Theorem OddWindow_precomp_abs_le : forall w,
+    OddWindow wsize w -> 
+    Z.to_nat (Z.div2 (Z.abs w)) < Nat.pow 2 numPrecompExponentGroups.
+
+    unfold OddWindow in *.
+    intuition idtac.
+    eapply PeanoNat.Nat.lt_le_trans.
+    eapply Znat.Z2Nat.inj_lt.
+    eapply Z.div2_nonneg.
+    lia.
+    assert (0 <= Z.pow 2 (Z.of_nat numPrecompExponentGroups))%Z.
+    lia.
+    eauto.
+    eapply Z.lt_le_trans.
+    eapply Zdigits.Zdiv2_two_power_nat.
+    lia.
+    assert (Z.abs w < Zpower.two_power_nat (S (Nat.pred wsize)))%Z.
+    rewrite PeanoNat.Nat.succ_pred_pos.
+    rewrite Z.shiftl_mul_pow2 in *.
+    eapply Z.lt_le_trans.
+    eauto.
+    rewrite Z.mul_1_l.
+    rewrite Zpower.two_power_nat_equiv.
+    reflexivity.
+    lia.
+    lia.
+    lia.
+    eauto.
+    rewrite Zpower.two_power_nat_equiv.
+    reflexivity.
+
+    rewrite Znat.Z2Nat.inj_pow.
+    rewrite Znat.Nat2Z.id.
+    reflexivity.
+    lia.
+    lia.
+
+  Qed.
+
+  Theorem wsize_precomp_correct : 
+    wsize = S numPrecompExponentGroups.
+
+    unfold numPrecompExponentGroups.
+    rewrite PeanoNat.Nat.succ_pred_pos.
+    reflexivity.
+    lia.
+  Qed.
+
+  Theorem OddWindow_precomp_le : forall w,
+    (0 <= w)%Z ->
+    OddWindow wsize w -> 
+    Z.to_nat (Z.div2 w) < Nat.pow 2 numPrecompExponentGroups.
+
+    unfold OddWindow in *.
+    intros.
+    destruct H0.
+    eapply PeanoNat.Nat.lt_le_trans.
+    eapply Znat.Z2Nat.inj_lt.
+    eapply Z.div2_nonneg.
+    lia.
+    assert (0 <= Z.pow 2 (Z.of_nat numPrecompExponentGroups))%Z.
+    lia.
+    eauto.
+    eapply Z.lt_le_trans.
+    eapply Zdigits.Zdiv2_two_power_nat.
+    lia.
+    rewrite <- wsize_precomp_correct.
+    rewrite Z.shiftl_mul_pow2 in *.
+    eapply Z.lt_le_trans.
+    rewrite Z.abs_eq in *.
+    eauto.
+    lia.
+    rewrite Z.mul_1_l.
+    rewrite Zpower.two_power_nat_equiv.
+    reflexivity.
+    lia.
+    lia.
+    rewrite Zpower.two_power_nat_equiv.
+    reflexivity.
+    rewrite Znat.Z2Nat.inj_pow.
+    rewrite Znat.Nat2Z.id.
+    reflexivity.
+    lia.
+    lia.
+
+  Qed.
 
   Theorem pExpMultiple_correct : forall n w,
         (n < precompTableSize)%nat -> 
@@ -3488,53 +3754,51 @@ Section ECEqProof.
     unfold groupMul_doubleAdd_signed.
     destruct (ZArith_dec.Z_lt_ge_dec w 0).
     case_eq (Z.shiftl w (Z.of_nat (numPrecompExponentGroups * wsize * n))); intros.
-    (* w = 0, contradiction *)
-    admit.
-    (* w >0, contradiction *)
-    admit.
+    apply Z.shiftl_eq_0_iff in H1.
+    subst. lia.
+    lia.
+    assert (0 <= w)%Z.
+    eapply Z.shiftl_nonneg.
+    rewrite H1.
+    lia.
+    lia.
 
-    assert (
-    toPoint
-  (seqToProd
-     (affineToJac
-        (affineOpp
-           (List.nth (Z.to_nat (Z.div2 (Z.abs w))) (List.nth n base_precomp_table [])
-              affine_zero))))
-  (affineIsJacobian
-     (affineOpp
-        (List.nth (Z.to_nat (Z.div2 (Z.abs w))) (List.nth n base_precomp_table [])
-           affine_zero))) 
-    ==
-    Jacobian.opp (toPoint
-  (seqToProd
-     (affineToJac
-        (List.nth (Z.to_nat (Z.div2 (Z.abs w))) (List.nth n base_precomp_table [])
-              affine_zero)))
-  (affineIsJacobian
-     (List.nth (Z.to_nat (Z.div2 (Z.abs w))) (List.nth n base_precomp_table [])
-           affine_zero))) 
-    ).
-    eapply affineOpp_toPoint_eq.
-    rewrite H2.
-    eapply Proper_opp.
-    clear H2.
     eapply jac_eq_jacobian_eq.
     rewrite <- fromPoint_toPoint_id.
+    unfold affineOppIfNegative.
+    destruct (ZArith_dec.Z_lt_ge_dec w 0).
+    assert ( jac_eq
+      (seqToProd (affineToJac (affineOpp (affinePointLookup (Z.to_nat (Z.div2 (Z.abs w))) n))))
+      (seqToProd (point_opp (affineToJac (affinePointLookup (Z.to_nat (Z.div2 (Z.abs w))) n))))
+    ).
+   
+    eapply affineOpp_toPoint_eq.
+    eapply jac_eq_trans; eauto.
+    eapply jac_eq_symm.
+    eapply jac_eq_trans.
+    eapply point_opp_equiv.
+    eapply point_opp_jac_eq_proper.
+    clear H2.
+    eapply jac_eq_symm.
     eapply jac_eq_trans.
     eapply base_precomp_table_correct.
+    trivial.
+    eapply OddWindow_precomp_abs_le; eauto.
+    
     eapply jac_eq_symm.
     assert ((groupMul_doubleAdd_pos Jacobian.add Jacobian.double p g)
     ==
     GroupMulWNAF.groupMul Jacobian.add zero_point (Pos.to_nat p) g
     ).
     eapply groupMul_doubleAdd_pos_equiv.
-    eapply Jacobian.Proper_add.
-    admit.
-    admit.
-    admit.
-    admit.
-    admit.
-  
+    apply Jacobian.Proper_add.
+    apply jac_add_assoc.
+    apply jac_add_comm.
+    apply jac_add_id_l.
+    apply Jacobian.Proper_double.
+    apply jac_double_correct.
+
+    rewrite seqToProd_inv.
     eapply jac_eq_trans.
     eapply jacobian_eq_jac_eq.
     eapply H2.
@@ -3548,23 +3812,70 @@ Section ECEqProof.
     replace (BinInt.Z.to_nat (Z.abs (w * 2 ^ (Z.of_nat (numPrecompExponentGroups * wsize * n))))) with 
       (Z.to_nat (Z.abs w) * Nat.pow 2 (n * numPrecompExponentGroups * wsize))%nat.
     eapply jac_eq_refl.
-    admit.
+    rewrite Z.abs_mul.
+    rewrite Znat.Z2Nat.inj_mul.
+    f_equal.
+    rewrite Z.abs_eq.
+    rewrite Znat.Z2Nat.inj_pow.
+    rewrite Znat.Nat2Z.id.
+    f_equal.
+    rewrite (NPeano.Nat.mul_comm (numPrecompExponentGroups * wsize)%nat). 
+    rewrite NPeano.Nat.mul_assoc.
     reflexivity.
-    admit.
+    lia.
+    lia.
+    lia.
+    lia.
+    lia.
+
+    reflexivity.
+    unfold OddWindow in *.
+    intuition idtac; subst.
+    replace (2 * Z.to_nat (Z.div2 (Z.abs w)) + 1)%nat with (Z.to_nat (2 * Z.div2 (Z.abs w) + (if BinInt.Z.odd (Z.abs w) then 1 else 0))).
+    f_equal.
+    apply Zeven.Zdiv2_odd_eqn.
+    rewrite Z_odd_abs_eq.
+    rewrite H4.
+    rewrite Znat.Z2Nat.inj_add.
+    f_equal.
+    rewrite Znat.Z2Nat.inj_mul.
+    reflexivity.
+    lia.
+    apply Z.div2_nonneg.
+    lia.
+    apply Z.mul_nonneg_nonneg.
+    lia.
+    apply Z.div2_nonneg.
+    lia.
+    lia.
+
     lia.
 
     rewrite Z.abs_eq; try lia.
     case_eq (Z.shiftl w (Z.of_nat (numPrecompExponentGroups * wsize * n))); intros.
     assert (w = 0)%Z.
-    admit.
+    apply Z.shiftl_eq_0_iff in H1.
+    subst. lia.
+    lia.
     subst.
-    (* not odd *)
-    admit.
+    unfold OddWindow in *.
+    intuition idtac.
+    simpl in *.
+    discriminate.
 
     rewrite Z.shiftl_mul_pow2 in H1.
     eapply jac_eq_jacobian_eq.
+    rewrite <- fromPoint_toPoint_id.  
+    unfold affineOppIfNegative.
+    destruct (ZArith_dec.Z_lt_ge_dec w 0); try lia.
     eapply jac_eq_trans.
     eapply base_precomp_table_correct.
+    trivial.
+    eapply OddWindow_precomp_le; eauto.
+    lia.
+    rewrite Z.abs_eq.
+    trivial.
+    lia.
     eapply jac_eq_symm.
     assert ((groupMul_doubleAdd_pos Jacobian.add Jacobian.double p g)
     ==
@@ -3572,16 +3883,17 @@ Section ECEqProof.
     ).
     eapply groupMul_doubleAdd_pos_equiv.
     eapply Jacobian.Proper_add.
-    admit.
-    admit.
-    admit.
-    admit.
-    admit.
+    apply jac_add_assoc.
+    apply jac_add_comm.
+    apply jac_add_id_l.
+    apply Jacobian.Proper_double.
+    apply jac_double_correct.
   
     eapply jac_eq_trans.
     eapply jacobian_eq_jac_eq.
     eapply H2.
     clear H2.
+    rewrite Z.abs_eq; try lia.
     replace (2 * Z.to_nat (Z.div2 w) + 1)%nat  with (Z.to_nat w).
     rewrite <- Znat.Z2Nat.inj_pos.
     rewrite <- H1.
@@ -3589,14 +3901,47 @@ Section ECEqProof.
     replace (BinInt.Z.to_nat (w * 2 ^ (Z.of_nat (numPrecompExponentGroups * wsize * n)))) with 
       (Z.to_nat w * Nat.pow 2 (n * numPrecompExponentGroups * wsize))%nat.
     eapply jac_eq_refl.
-    admit.
-    admit.
+    rewrite Znat.Z2Nat.inj_mul.
+    f_equal.
+    rewrite Znat.Z2Nat.inj_pow.
+    rewrite Znat.Nat2Z.id.
+    f_equal.
+    rewrite (NPeano.Nat.mul_comm (numPrecompExponentGroups * wsize)%nat). 
+    rewrite NPeano.Nat.mul_assoc.
+    reflexivity.
+    lia.
+    lia.
+    lia.
+    lia.
+
+    unfold OddWindow in *.
+    intuition idtac; subst.
+    replace (2 * Z.to_nat (Z.div2 w) + 1)%nat with (Z.to_nat (2 * Z.div2 w+ (if BinInt.Z.odd w then 1 else 0))).
+    f_equal.
+    apply Zeven.Zdiv2_odd_eqn.
+    rewrite H4.
+    rewrite Znat.Z2Nat.inj_add.
+    f_equal.
+    rewrite Znat.Z2Nat.inj_mul.
+    reflexivity.
+    lia.
+    apply Z.div2_nonneg.
+    lia.
+    apply Z.mul_nonneg_nonneg.
+    lia.
+    apply Z.div2_nonneg.
+    lia.
+    lia.
+    lia.
 
     (* contradiction *)
-    admit.
-  Admitted.
+    assert (w < 0)%Z.
+    eapply Z.shiftl_neg.
+    rewrite H1.
+    lia.
+    lia.
+  Qed.
  
-
   Definition groupedMul_scalar_precomp numPrecompExponentGroups wsize nw d s :=
     match (groupedMul_precomp Jacobian.add zero_point Jacobian.double wsize nw g numPrecompExponentGroups pExpMultiple d (recode_rwnaf wsize nw (Z.of_nat s))) with
     | Some x => 
@@ -3608,29 +3953,12 @@ Section ECEqProof.
     jac_eq (fromPoint zero_point)
      (seqToProd (replicate 3 (Vec 6 (bitvector 64)) (replicate 6 (bitvector 64) (intToBv 64 0)))).
 
-  Admitted.
-
-  Theorem decrExpsLs_length : forall d x y,
-    decrExpsLs d x = Some y ->
-    Datatypes.length x = Datatypes.length y.
-
-    induction x; intros; simpl in *.
-    inversion H; clear H; subst.
-    reflexivity.
-    case_eq (decrExpsLs d x); intros;
-    rewrite H0 in H.
-    case_eq (combineOpt (List.map (decrExpLs d) l)); intros;
-    rewrite H1 in H.
-    inversion H; clear H; subst.
+    unfold zero_point, zero_point_h.
     simpl.
-    f_equal.
-    apply combineOpt_length in H1.
-    rewrite map_length in *.
-    rewrite <- H1.
-    eapply IHx; eauto.
-    discriminate.
-    discriminate.
-
+    destruct (dec (Feq 0 0)). trivial.
+    exfalso.
+    intuition idtac.
+    eapply n. reflexivity.
   Qed.
 
   Theorem combineOpt_f : forall (A B : Type)(f : A -> B) ls,
@@ -3717,10 +4045,41 @@ Section ECEqProof.
     
   Qed.
 
-    Theorem add_base_abstract_jac_add_equiv_h:  forall n p (rwnaf : list (t bool 16)),
+  Hypothesis Fone_eq : 
+    p384_felem_one = 1.
+
+  Theorem affineToJac_cons_eq : forall z,
+      affineToJac z =
+      cons (seq 6 (seq 64 bool)) (nth_order z zero_lt_two) 2
+        (cons (seq 6 (seq 64 bool)) (nth_order z one_lt_two) 1
+           (cons (seq 6 (seq 64 bool)) p384_felem_one 0 (nil (seq 6 (seq 64 bool))))).
+
+    intros.
+    unfold affineToJac. 
+    destruct (Vec_S_cons _ _ z). destruct H.
+    destruct (Vec_S_cons _ _ x0). destruct H0.
+    subst.
+    rewrite (Vec_0_nil _ x2).
+    rewrite SAWCorePrelude_proofs.append_cons.
+    simpl.
+    rewrite SAWCorePrelude_proofs.append_cons.
+    simpl.
+    rewrite append_nil_eq.
+    f_equal.
+    f_equal.      
+    f_equal.
+    symmetry.
+    trivial.
+
+  Qed.
+
+
+  Theorem add_base_abstract_jac_add_equiv_h:  forall n p (rwnaf : list (t bool 16)),
+    n < List.length rwnaf -> 
+    Nat.div n numPrecompExponentGroups < Datatypes.length base_precomp_table -> 
     List.Forall (fun x => OddWindow wsize (sbvToInt _ x)) rwnaf -> 
     jac_eq 
-      (seqToProd (add_base_abstract Fsquare Fmul Fsub Fadd Fopp base_precomp_table rwnaf (prodToSeq (fromPoint p)) n))
+      (seqToProd (add_base_abstract Fsquare Fmul Fsub Fadd Fopp base_precomp_table numPrecompExponentGroups rwnaf (prodToSeq (fromPoint p)) n))
       (fromPoint (Jacobian.add p (pExpMultiple (Nat.div n numPrecompExponentGroups) (sbvToInt _ (List.nth n rwnaf (vecRepeat 0%bool 16)))))).
 
     intros.
@@ -3733,7 +4092,7 @@ Section ECEqProof.
                                    (List.nth n rwnaf (vecRepeat 0%bool 16)) 15)
                                 (bvXor 16 (List.nth n rwnaf (vecRepeat 0%bool 16))
                                    (bvSShr 15 (List.nth n rwnaf (vecRepeat 0%bool 16)) 15))) 1))
-                       (List.nth (PeanoNat.Nat.div n 4) base_precomp_table [])) as z.
+                       (List.nth (PeanoNat.Nat.div n numPrecompExponentGroups) base_precomp_table [])) as z.
 
     rewrite select_point_affine_abstract_nth_equiv in Heqz.
     remember (List.nth n rwnaf (vecRepeat 0%bool 16)) as m.
@@ -3745,7 +4104,11 @@ Section ECEqProof.
     rewrite felem_cmovznz_equiv.
     eapply jac_eq_symm.
     eapply point_add_mixed_eq.
-    admit.
+    erewrite nth_order_S_cons.
+    erewrite nth_order_S_cons.
+    erewrite nth_order_0_cons.
+    trivial.
+
     rewrite seqToProd_inv.
     eapply jac_eq_refl.
 
@@ -3760,13 +4123,79 @@ Section ECEqProof.
     rewrite Z.abs_eq.
     destruct (ZArith_dec.Z_lt_ge_dec
                   (sbvToInt 16 (List.nth n rwnaf (vecRepeat 0%bool 16))) 0).
-    (* contradiction *)
-    admit.
+    exfalso.
+    rewrite bvShr_shiftR_equiv in *.
+    rewrite shiftR_all_neg in H2.
+    replace (point_id_to_limb (intToBv 16 1)) with (intToBv 64 1) in *.
+    apply bvEq_eq in H2.
+    assert (1 = 0)%Z.
+    eapply intToBv_eq_pos; eauto.
+    lia.
+    lia.
+    discriminate.
+    reflexivity.
+    lia.
+    trivial.
+
     rewrite <- fromPoint_toPoint_id.
     rewrite Z.div2_spec.
+    unfold affineOppIfNegative, affinePointLookup.
+    destruct (ZArith_dec.Z_lt_ge_dec (sbvToInt 16 (List.nth n rwnaf (vecRepeat 0%bool 16))) 0); try lia.
+    rewrite (nth_indep _ affine_default (cons F 0 1 (cons F 0 0 (nil F)))).
     eapply jac_eq_refl.
-    admit.
-    admit.
+    rewrite (base_precomp_table_entry_length (List.nth (Nat.div n numPrecompExponentGroups) base_precomp_table [])).
+    assert (OddWindow wsize (sbvToInt 16 (List.nth n rwnaf (vecRepeat 0%bool 16)))).
+    eapply List.Forall_forall in H1.
+    eapply H1.
+    eapply nth_In.
+    lia.
+    unfold OddWindow in H3.
+    intuition idtac.
+    rewrite Z.abs_eq in H7; try lia.
+    repeat rewrite <- Z.div2_spec in *.
+    replace (BinInt.Z.shiftl 1 (BinInt.Z.of_nat wsize)) with (2 * (BinInt.Z.shiftl 1 (BinInt.Z.of_nat numPrecompExponentGroups)))%Z in H7.
+    eapply NPeano.Nat.lt_le_trans.
+    eapply (Znat.Z2Nat.inj_lt _ (BinInt.Z.shiftl 1 (BinInt.Z.of_nat numPrecompExponentGroups))).
+    eapply Z.div2_nonneg.
+    lia.
+    eapply Z.shiftl_nonneg.
+    lia.
+    eapply div2_lt.
+    eauto.
+    rewrite Z.shiftl_1_l.
+    rewrite Znat.Z2Nat.inj_pow.
+    rewrite Znat.Nat2Z.id.
+    reflexivity.
+    lia.
+    lia.
+    unfold numPrecompExponentGroups.
+    rewrite Z.shiftl_1_l.
+    rewrite <- (@Z.pow_add_r 2 1)%Z.
+    replace (1 + BinInt.Z.of_nat (Nat.pred wsize))%Z with (BinInt.Z.of_nat wsize).
+    rewrite Z.shiftl_1_l.
+    reflexivity.
+    lia.
+    lia.
+    lia.
+    eapply nth_In.
+    lia.
+
+    rewrite bvShr_shiftR_equiv in *.
+    apply bvEq_eq in H2.
+    destruct (dec (0 <= sbvToInt 16 (List.nth n rwnaf (vecRepeat 0%bool 16))))%Z; trivial.
+    exfalso.
+    rewrite shiftR_all_neg in H2.
+    replace (point_id_to_limb (intToBv 16 1)) with (intToBv 64 1) in *.
+    assert (1 = 0)%Z.
+    eapply intToBv_eq_pos; eauto.
+    lia.
+    lia.
+    discriminate.
+    reflexivity.
+    lia.
+    lia.
+
+    eapply affineToJac_cons_eq.
 
     replace  (seqToProd
      (cons (seq 6 (seq 64 bool)) (nth_order z zero_lt_two) 2
@@ -3776,12 +4205,60 @@ Section ECEqProof.
     (seqToProd (affineToJac (affineOpp z))).
     subst.
     unfold pExpMultiple.
-    destruct (ZArith_dec.Z_lt_ge_dec (sbvToInt 16 (List.nth n rwnaf (vecRepeat 0%bool 16)))).
     rewrite <- fromPoint_toPoint_id.
+    unfold affineOppIfNegative, affinePointLookup.
+    destruct (ZArith_dec.Z_lt_ge_dec (sbvToInt 16 (List.nth n rwnaf (vecRepeat 0%bool 16)))).
     rewrite Z.div2_spec.
+    rewrite (nth_indep _ affine_default (cons F 0 1 (cons F 0 0 (nil F)))).
     eapply jac_eq_refl.
+    rewrite (base_precomp_table_entry_length (List.nth (Nat.div n numPrecompExponentGroups) base_precomp_table [])).
+    assert (OddWindow wsize (sbvToInt 16 (List.nth n rwnaf (vecRepeat 0%bool 16)))).
+    eapply List.Forall_forall in H1.
+    eapply H1.
+    eapply nth_In.
+    lia.
+    unfold OddWindow in H3.
+    intuition idtac.
+    repeat rewrite <- Z.div2_spec in *.
+    replace (BinInt.Z.shiftl 1 (BinInt.Z.of_nat wsize)) with (2 * (BinInt.Z.shiftl 1 (BinInt.Z.of_nat numPrecompExponentGroups)))%Z in H7.
+    eapply NPeano.Nat.lt_le_trans.
+    eapply (Znat.Z2Nat.inj_lt _ (BinInt.Z.shiftl 1 (BinInt.Z.of_nat numPrecompExponentGroups))).
+    eapply Z.div2_nonneg.
+    lia.
+    eapply Z.shiftl_nonneg.
+    lia.
+    eapply div2_lt.
+    eauto.
+    rewrite Z.shiftl_1_l.
+    rewrite Znat.Z2Nat.inj_pow.
+    rewrite Znat.Nat2Z.id.
+    reflexivity.
+    lia.
+    lia.
+    unfold numPrecompExponentGroups.
+    rewrite Z.shiftl_1_l.
+    rewrite <- (@Z.pow_add_r 2 1)%Z.
+    replace (1 + BinInt.Z.of_nat (Nat.pred wsize))%Z with (BinInt.Z.of_nat wsize).
+    rewrite Z.shiftl_1_l.
+    reflexivity.
+    lia.
+    lia.
+    lia.
+    eapply nth_In.
+    lia.
+
     (* contradiction *)
-    admit.
+    exfalso.
+    rewrite bvShr_shiftR_equiv in *.
+    rewrite shiftR_all_nonneg in H2.
+    rewrite rep_false_eq_int_bv in *.
+    replace (point_id_to_limb (intToBv 16 0)) with (intToBv 64 0) in *.
+    apply bvEq_neq in H2.
+    intuition idtac.
+    reflexivity.
+    lia.
+    lia.
+
     unfold affineToJac, affineOpp.
     simpl.
     f_equal.
@@ -3794,25 +4271,110 @@ Section ECEqProof.
     f_equal.
     f_equal.
     f_equal.
-    (* Need to show that p384_felem_one is 1 *)
-    admit.
+    symmetry.
+    trivial.
+
     reflexivity.
     eapply ct_abs_equiv.
     subst.
-    (* window is not too small *)
-    admit.
+    destruct (dec (n < (List.length rwnaf))%nat).
+    eapply Forall_nth.
+    eapply List.Forall_impl; eauto.
+    intros.
+    unfold OddWindow in *.
+    intuition idtac.
+    eapply Z.abs_lt in H6.
+    eapply Z.le_lt_trans; [idtac | eapply H6].
+    rewrite Z.shiftl_mul_pow2.
+    apply (Z.opp_le_mono (1 * 2 ^ BinInt.Z.of_nat wsize)).
+    rewrite Z.mul_1_l.
+    eapply Z.pow_le_mono_r.
+    lia.
+    lia.
+    lia.
+    lia.
+    rewrite nth_overflow.
+    replace (sbvToInt 16 (vecRepeat 0%bool 16)) with 0%Z.
+    lia.
+    reflexivity.
+    lia.
+
     reflexivity.
     rewrite <- (sbvToInt_bvToInt_id (bvAdd 16 (shiftR 16 bool 0%bool m 15) (bvXor 16 m (bvSShr 15 m 15)))).
     erewrite ct_abs_equiv; try reflexivity.
-    admit.
-    admit.    
+    rewrite sbvToInt_sign_extend_16_64_equiv.
+    erewrite bvSShr_Z_shiftr_equiv; try reflexivity.
+    rewrite sbvToInt_intToBv_id.
+    eapply Z.shiftr_nonneg.
+    lia.
+    lia.
+    intuition idtac; try lia.
+    destruct (dec (n < (List.length rwnaf))%nat).
+    subst.
+    eapply Forall_nth.
+    eapply List.Forall_impl; eauto.
+    intros.
+    unfold OddWindow in *; simpl in *.
+    intuition idtac.
+    eapply Z.lt_le_trans.
+    eapply H8.
+    rewrite Z.shiftl_1_l.
+    rewrite Z.pow_pos_fold.
+    eapply Z.pow_le_mono_r.
+    lia.
+    lia.
+    lia.
+    subst.
+    rewrite nth_overflow.
+    replace (sbvToInt 16 (vecRepeat 0%bool 16)) with 0%Z.
     lia.
     reflexivity.
-    (* each row in the pre-comp table list has length less then 2^64 *)
-    admit.
+    lia.
+    subst.
+    destruct (dec (n < (List.length rwnaf))%nat).
+    eapply Forall_nth.
+    eapply List.Forall_impl; eauto.
+    intros.
+    unfold OddWindow in *; simpl in *.
+    intuition idtac.
+    apply Z.abs_lt in H6.
+    eapply Z.le_lt_trans; [idtac | apply H6].
+    rewrite Z.shiftl_1_l.
+    replace (-32768)%Z with (- (2 ^ 15))%Z.
+    eapply (Z.opp_le_mono (2 ^ BinInt.Z.of_nat wsize)%Z) ; intros.
+    eapply Z.pow_le_mono_r.
+    lia.
+    lia.
+    reflexivity.
+    lia.
+    rewrite nth_overflow.
+    replace (sbvToInt 16 (vecRepeat 0%bool 16)) with 0%Z.
+    lia.
+    reflexivity.
+    lia.
+    lia.
+    reflexivity.
+
+    destruct (dec ((PeanoNat.Nat.div n numPrecompExponentGroups) < (List.length base_precomp_table))).
+    rewrite base_precomp_table_entry_length.
+    rewrite Znat.Nat2Z.inj_pow.
+    eapply Z.pow_lt_mono_r.
+    lia.
+    lia.
+    unfold numPrecompExponentGroups.
+    lia.
+    eapply nth_In; eauto.
+    rewrite nth_overflow.
+    simpl.
+    lia.
+    lia.
 
     apply bvToNat_lt_word.
-  Admitted.
+
+    Unshelve.
+    lia.
+    lia.
+  Qed.
   
   Theorem Forall_nth : forall (A : Type)(f : A -> Prop) ls n def,
     List.Forall f ls ->
@@ -3839,7 +4401,7 @@ Section ECEqProof.
     jac_eq (fromPoint p2) (seqToProd p1) -> 
     (n' < List.length rwnaf <= numPrecompExponentGroups * precompTableSize)%nat -> 
     jac_eq 
-      (seqToProd (add_base_abstract Fsquare Fmul Fsub Fadd Fopp base_precomp_table rwnaf p1 n'))
+      (seqToProd (add_base_abstract Fsquare Fmul Fsub Fadd Fopp base_precomp_table numPrecompExponentGroups rwnaf p1 n'))
       (fromPoint (Jacobian.add p2 (groupMul_doubleAdd_signed Jacobian.add zero_point Jacobian.double Jacobian.opp
         ((sbvToInt _ (List.nth n' rwnaf (vecRepeat 0%bool 16))) * (Z.pow 2 (Z.of_nat (wsize * n)))) g))).
 
@@ -3863,6 +4425,12 @@ Section ECEqProof.
     replace p1 with (prodToSeq (fromPoint (toPoint (seqToProd p1) H4))) at 1.
     eapply jac_eq_trans.
     eapply add_base_abstract_jac_add_equiv_h.
+    lia.
+    eapply NPeano.Nat.div_lt_upper_bound.
+    lia.
+    unfold precompTableSize in *.
+    lia.
+
     eauto.
     eapply jacobian_eq_jac_eq.
     eapply Jacobian.Proper_add.
@@ -3948,7 +4516,7 @@ Section ECEqProof.
          (groupMul_signedWindows_prog' Jacobian.add zero_point Jacobian.double Jacobian.opp wsize g p1 (x ++ [wm_Double 1])))
         (seqToProd
        (List.fold_left
-          (add_base_abstract Fsquare Fmul Fsub Fadd Fopp base_precomp_table
+          (add_base_abstract Fsquare Fmul Fsub Fadd Fopp base_precomp_table numPrecompExponentGroups
              rwnaf2)
           (List.rev ls)
           (List.fold_left
@@ -4028,14 +4596,14 @@ Section ECEqProof.
     rewrite Z.shiftl_mul_pow2.
     rewrite NPeano.Nat.mul_comm.
     reflexivity.
-    admit.
+    apply Znat.Nat2Z.is_nonneg.
     
     discriminate.
     discriminate.
     discriminate.
     discriminate.
 
-  Admitted.
+  Qed.
 
   
   Theorem ls_add_base_abstract_equiv : forall ls  rwnaf1 rwnaf2 x0 x n p1 p2,
@@ -4053,7 +4621,7 @@ Section ECEqProof.
          (groupMul_signedWindows_prog' Jacobian.add zero_point Jacobian.double Jacobian.opp wsize g p1 x))
         (seqToProd
        (List.fold_left
-          (add_base_abstract Fsquare Fmul Fsub Fadd Fopp base_precomp_table
+          (add_base_abstract Fsquare Fmul Fsub Fadd Fopp base_precomp_table numPrecompExponentGroups
              rwnaf2)
           (List.rev ls)
           p2)).
@@ -4120,10 +4688,49 @@ Section ECEqProof.
     rewrite Z.shiftl_mul_pow2.
     rewrite NPeano.Nat.mul_comm.
     reflexivity.
-    admit.
+    apply Znat.Nat2Z.is_nonneg.
     discriminate.
 
-  Admitted.
+  Qed.
+
+  Theorem Forall2_map_l : forall (A B C: Type) P (f : A -> C) lsa (lsb : list B),
+    List.Forall2 (fun x y => P (f x) y) lsa lsb ->
+    List.Forall2 P (List.map f lsa) lsb.
+
+    induction 1; intros; simpl in *.
+    econstructor.
+    econstructor; eauto.
+
+  Qed.
+
+  Theorem Forall2_map_r : forall (A B C: Type) P (f : B -> C) (lsa : list A) lsb,
+    List.Forall2 (fun x y => P x (f y)) lsa lsb ->
+    List.Forall2 P lsa (List.map f lsb).
+
+    induction 1; intros; simpl in *.
+    econstructor.
+    econstructor; eauto.
+
+  Qed.
+
+
+  Theorem Forall2_same_Forall : forall (A : Type) P (ls : list A),
+    List.Forall (fun x => P x x) ls ->
+    List.Forall2 P ls ls.
+
+    induction 1; intros; simpl in *.
+    econstructor.
+    econstructor; eauto.
+
+  Qed.
+
+  Theorem Forall_I : forall (A : Type)(ls : list A),
+    List.Forall (fun x => True) ls.
+
+    induction ls; intuition idtac; econstructor; eauto.
+
+  Qed.
+
       
   Theorem point_mul_base_abstract_list_equiv_h : forall x p p1 p2 rwnaf1 rwnaf2,
     jac_eq (fromPoint p1) (seqToProd p2) ->
@@ -4133,6 +4740,7 @@ Section ECEqProof.
     permuteAndDouble_grouped rwnaf1 1
        (groupIndices_h (S (S (S nw))) numPrecompExponentGroups (List.length x)) = Some x ->
   Datatypes.length rwnaf2 <= numPrecompExponentGroups * precompTableSize ->
+    Datatypes.length rwnaf2 = (S (S (S nw))) -> 
     (Datatypes.length x) < (numPrecompExponentGroups) ->
   jac_eq (fromPoint p)
     (seqToProd
@@ -4164,8 +4772,15 @@ Section ECEqProof.
     destruct H3.
     subst.
     assert (x0 = x1 /\ [x] = x3).
-    admit.
-    destruct H7. subst.
+    unfold permuteAndDouble_grouped in H2. simpl in *.
+    optSomeInv.
+    simpl in *.
+    optSomeInv.
+    simpl in *.
+    optSomeInv.
+    eapply app_inj_tail in H7; intuition idtac; subst; trivial.
+
+    destruct H8. subst.
 
     unfold permuteAndDouble_grouped in H2.
     simpl in *.
@@ -4192,22 +4807,29 @@ Section ECEqProof.
     eapply (@double_add_base_abstract_equiv _ _ _ _ _ (Datatypes.length x1)).
     eapply Forall_map; eauto.
     eapply Forall_map.
-    admit.
-    admit.
+    eapply lsMultiples_gcd.
+    eapply List.Forall_impl; [idtac | apply lsMultiples_length_weak].
+    intros.
+    simpl in *; subst.
+    lia.
     reflexivity.
     trivial.
     eauto.
     rewrite NPeano.Nat.mul_1_r in *.
     trivial.
-    admit.
-    unfold numPrecompExponentGroups.
+    apply Forall2_map_r.
+    apply Forall2_same_Forall.
+    apply lsMultiples_div.
+    lia.
+    lia.
     lia.
     trivial.
     trivial.
+    lia.
     lia.
     lia.
 
-  Admitted.
+  Qed.
 
   Local Opaque jac_eq.
 
@@ -4249,6 +4871,7 @@ Section ECEqProof.
     permuteAndDouble_grouped rwnaf1 1
        (groupIndices_h (S (S (S nw))) numPrecompExponentGroups (List.length x)) = Some x ->
   Datatypes.length rwnaf2 <= numPrecompExponentGroups * precompTableSize ->
+  Datatypes.length rwnaf2 = (S (S (S nw))) ->
   (Datatypes.length x) <= (numPrecompExponentGroups) ->
   jac_eq (fromPoint p)
     (seqToProd
@@ -4271,7 +4894,7 @@ Section ECEqProof.
     eapply H2.
     eapply jac_eq_trans.
     eapply jacobian_eq_jac_eq.
-    eapply H6.
+    eapply H7.
 
     destruct x using rev_ind; intros; simpl in *; subst.
     unfold numPrecompExponentGroups in *.
@@ -4297,8 +4920,8 @@ Section ECEqProof.
     rewrite app_nil_r.
 
     assert ((Datatypes.length x1) = (Datatypes.length l1)).
-    apply permuteAndDouble_grouped_length in H8.
-    rewrite H8.
+    apply permuteAndDouble_grouped_length in H9.
+    rewrite H9.
     rewrite groupIndices_h_length.
     reflexivity.
     rewrite H3.
@@ -4310,25 +4933,33 @@ Section ECEqProof.
     eapply Forall_map.
     trivial.
     eapply Forall_map.
-    admit.
-    admit.
+    apply lsMultiples_gcd.
+    eapply List.Forall_impl; [idtac | 
+    apply lsMultiples_length_weak].
+    intros.
+    simpl in *; lia.
     reflexivity.
     trivial.
     rewrite <- H3.
     eauto.
-    rewrite groupIndices_h_length in H7.
+    rewrite groupIndices_h_length in H8.
     rewrite <- H3.
-    rewrite NPeano.Nat.mul_1_r in H7.
+    rewrite NPeano.Nat.mul_1_r in H8.
     trivial.
-    admit.
-    unfold numPrecompExponentGroups. lia.
-    unfold numPrecompExponentGroups. lia.
+    apply Forall2_map_r.
+    apply Forall2_same_Forall.
+    eapply lsMultiples_div.
+    lia.
+    lia.
+    lia.
+    lia.
     reflexivity.
     trivial.
     reflexivity.
     rewrite <- H3.
     trivial.
-    unfold numPrecompExponentGroups; lia.
+    lia.
+    lia.
     lia.
 
     apply Jacobian.Proper_add.
@@ -4339,7 +4970,8 @@ Section ECEqProof.
     assert (S (S (S nw)) <> 0)%nat by lia.
     eauto.
     assert (numPrecompExponentGroups <> 0)%nat.
-    unfold numPrecompExponentGroups; lia.
+    unfold numPrecompExponentGroups.
+    lia.
     eauto.
 
     eapply jac_eq_trans.
@@ -4349,14 +4981,307 @@ Section ECEqProof.
     eapply point_mul_base_abstract_list_equiv_h; eauto.
     lia.
 
-  Admitted.
+  Qed.
 
+  Theorem groupIndices_length : forall n x,
+    List.length (groupIndices n x) = x.
+
+    intros.
+    unfold groupIndices.
+    apply groupIndices_h_length.
+  Qed.
+
+  Theorem Foralll2_impl : forall (A B : Type)(P1 P2 : A -> B -> Prop) ls1 ls2,
+    List.Forall2 P1 ls1 ls2 ->
+    (forall a b, List.In a ls1 -> List.In b ls2 -> P1 a b -> P2 a b) ->
+    List.Forall2 P2 ls1 ls2.
+
+    induction 1; intros; simpl in *.
+    econstructor.
+    econstructor.
+    eauto.
+    eauto.
+
+  Qed.
+
+  Theorem mul_scalar_rwnaf_abstract_OddWindow : forall n,
+     (bvToInt 384 n < 2 ^ Z.of_nat (S (S (S nw)) * wsize))%Z -> 
+    List.Forall (OddWindow wsize) (List.map (fun x0 : bitvector 16 => sbvToInt 16 x0) (mul_scalar_rwnaf_abstract wsize nw n)).
+
+    intros.
+    specialize (mul_scalar_rwnaf_abstract_equiv n); intros.
+    intuition idtac.
+    eapply Forall_map.
+    eapply forall2_symm in H3.
+
+    specialize (@recode_rwnaf_correct wsize); intros.
+    assert (wsize <> 0)%nat by lia.
+    intuition idtac.
+    specialize (H7 (S (S (S nw)))). 
+    assert (S (S (S nw)) <> 0)%nat by lia.
+    intuition idtac.
+
+    eapply (Foralll2_impl (fun (y : bitvector 16)(z : Z) => y = intToBv _ z)) in H3.
+    eapply forall2_map_eq in H3.
+    rewrite H3.
+
+    specialize (H8 (bvToNat _ n)).
+    assert (BinInt.Z.of_nat (bvToNat 384 n) < BinInt.Z.shiftl 1 (BinInt.Z.of_nat (S (S (S nw)) * wsize)))%Z.
+    rewrite Z.shiftl_1_l.
+    rewrite bvToNat_toZ_equiv.
+    eapply H.
+    intuition idtac.
+    rewrite bvToNat_toZ_equiv in *.
+    unfold RegularReprOfNat, RegularReprOfZ in *.
+    intuition idtac.  
+    clear H10.
+    unfold RegularWindows in *.
+    eapply List.Forall_forall.
+    intros.
+    eapply in_map_iff in H9.
+    destruct H9.
+    intuition idtac.
+    subst.
+    specialize (H8 x0).
+    intuition idtac.
+    rewrite sbvToInt_intToBv_id.
+    trivial.
+    lia.
+    unfold OddWindow in *.
+    rewrite Z.shiftl_1_l in *.
+    intuition idtac.
+    apply Z.abs_lt in H10.
+    intuition idtac.
+    eapply (Z.le_trans _ (- 2 ^ BinInt.Z.of_nat wsize)).
+    eapply (Z.opp_le_mono (2 ^ BinInt.Z.of_nat wsize)).
+    eapply Z.pow_le_mono_r.
+    lia.
+    lia.
+    lia.
+    apply Z.abs_lt in H10.
+    intuition idtac.
+    eapply Z.lt_le_trans; eauto.
+    eapply Z.pow_le_mono_r.
+    lia.
+    lia.
+
+    intros.
+    subst.
+    symmetry.
+    apply intToBv_sbvToInt_id.
+  Qed.
+
+  Theorem Forall_flatten : forall (A : Type)(P : A -> Prop) (ls : list (list A)),
+    (forall x, List.In x ls -> List.Forall P x) ->
+    List.Forall P (flatten ls).
+
+    induction ls; intros; simpl in *.
+    econstructor.
+    eapply Forall_app.
+    intuition idtac.
+    eapply H; intuition idtac.
+    eapply IHls; intuition idtac.
+    eapply H; intuition idtac.
+
+  Qed.
+
+
+  Theorem combineOpt_In : forall (A : Type)(ls :list (option A)) ls' x,
+    combineOpt ls = Some ls' -> 
+    List.In x ls' -> 
+    List.In (Some x) ls.
+
+    induction ls; intros; simpl in *.
+    optSomeInv.
+    simpl in *.
+    intuition idtac.
+
+    optSomeInv.
+    simpl in *.
+    intuition idtac; subst.
+    left; eauto.
+    right.
+    eauto.
+
+  Qed.
+
+  Theorem decrExp_ProgOddWindow: forall l l0 n x y z,
+    decrExp n l = Some l0 ->
+    ProgOddWindow x y z l -> 
+    ProgOddWindow x y z l0.
+
+    intros.
+    unfold decrExp in *.
+    destruct l.
+    destruct (Compare_dec.le_dec n n0 ); optSomeInv.
+    unfold ProgOddWindow in *; intuition idtac; subst.
+    lia.
+    discriminate.
+    optSomeInv.
+    trivial.
+  Qed.
+
+  Theorem decrExpLs_ProgOddWindow: forall l l0 n x y z,
+    decrExpLs n l = Some l0 ->
+    List.Forall (ProgOddWindow x y z) l -> 
+    List.Forall (ProgOddWindow x y z) l0.
+
+    induction l; intros; simpl in *; optSomeInv.
+    econstructor.
+    inversion H0; clear H0; subst.
+    econstructor.
+    eapply decrExp_ProgOddWindow; eauto.
+    eapply IHl; eauto.
+
+  Qed.
+
+  Theorem decrExpsLs_ProgOddWindow: forall l l0 n x y z,
+    decrExpsLs n l = Some l0 ->
+    (forall v, List.In v l -> List.Forall (ProgOddWindow x y z) v) -> 
+    (forall v, List.In v l0 -> List.Forall (ProgOddWindow x y z) v).
+
+    induction l; intros; simpl in *;
+    optSomeInv;
+    simpl in *.
+    intuition idtac.
+    destruct H1; subst.
+    eapply H0.
+    intuition idtac.
+    eapply combineOpt_In in H3; eauto.
+    eapply in_map_iff in H3.
+    destruct H3.
+    destruct H1.
+    eapply decrExpLs_ProgOddWindow; eauto.
+    
+  Qed.
+
+  Theorem multiSelect_In : forall (A : Type)(ls1 : list A) ls2 x y, 
+    multiSelect ls1 x = Some ls2 ->
+    List.In y ls2 -> List.In y ls1.
+
+    intros.
+    unfold multiSelect in *.
+    eapply combineOpt_In in H; eauto.
+    apply in_map_iff in H.
+    destruct H.
+    intuition idtac; simpl in *.
+    apply nth_error_In in H3.
+    trivial.
+
+  Qed.
+
+  Theorem recode_rwnaf_OddWindow : forall nw n, 
+    nw <> 0%nat -> 
+    (Z.of_nat n < BinInt.Z.shiftl 1 (BinInt.Z.of_nat (nw * wsize)))%Z ->
+    List.Forall (OddWindow wsize) (recode_rwnaf wsize nw (Z.of_nat n)).
+
+    intros.   
+    specialize (@recode_rwnaf_correct wsize); intros.
+    assert (wsize <> 0)%nat by lia.
+    intuition idtac.
+    specialize (H5 nw0).
+    intuition idtac.
+    specialize (H7 n).
+    intuition idtac.
+    eapply List.Forall_forall.
+    intros.
+    eapply H5.
+    eauto.
+
+  Qed.
+
+  Theorem mul_scalar_rwnaf_abstract_length: forall z,
+    (bvToInt 384 z < 2 ^ Z.of_nat (S (S (S nw)) * wsize))%Z -> 
+    List.length (mul_scalar_rwnaf_abstract wsize nw z) = (S (S (S nw))).
+
+    intros.
+    specialize (mul_scalar_rwnaf_abstract_equiv z); intros.
+    apply H0 in H.
+    apply Forall2_length_eq in H.
+    rewrite <- H.
+    apply recode_rwnaf_length.
+    lia.
+  Qed.
+
+  Theorem jac_eq_fromPoint_opp : forall x y,
+    jac_eq (seqToProd x) (fromPoint y) -> 
+    jac_eq
+  (seqToProd
+     (EC_P384_Abstract.point_opp Fopp x)) (fromPoint (Jacobian.opp y)).
+
+    intros.
+    eapply jac_eq_symm.
+    eapply jac_eq_trans.
+    eapply point_opp_equiv.
+    eapply point_opp_jac_eq_proper.
+    rewrite seqToProd_inv.
+    eapply jac_eq_symm.
+    trivial.
+
+  Qed.
+
+  Theorem nth_order_opp_eq : forall n p (pf : n < 3),
+    n <> 1%nat ->
+    nth_order (EC_P384_Abstract.point_opp Fopp p) pf = nth_order p pf.
+
+    intros.
+    unfold EC_P384_Abstract.point_opp.
+    unfold EC_P384_Abstract.point in *.
+    destructVec.
+    repeat erewrite sawAt_nth_equiv; try lia.
+    simpl.
+    unfold nth_order.
+    destruct n.
+    reflexivity.
+    destruct n. lia.
+    destruct n.
+    reflexivity.
+    lia.
+  
+  Qed.
+
+  Theorem nth_order_append_vec_lt : forall (A : Type) n1 n2 (v1 : Vec n1 A)(v2 : Vec n2 A) x (pf1 : x < n1 + n2)(pf2 : x < n1),
+    nth_order (Vector.append v1 v2) pf1 = nth_order v1 pf2.
+
+    induction v1; intros; simpl in *.
+    lia.
+    destruct x; simpl in *.
+    rewrite nth_order_0_cons.
+    rewrite nth_order_0_cons.
+    reflexivity.
+    erewrite nth_order_S_cons.
+    erewrite nth_order_S_cons.
+    eapply IHv1.
+
+    Unshelve.
+    lia.
+    lia.
+
+  Qed.
+
+  Theorem nth_order_append_vec_ge : forall (A : Type) n1 n2 (v1 : Vec n1 A)(v2 : Vec n2 A) x (pf1 : x < n1 + n2)(pf2 : (x - n1) < n2),
+    x >= n1 -> 
+    nth_order (Vector.append v1 v2) pf1 = nth_order v2 pf2.
+
+    induction v1; intros; simpl in *.
+    destruct x; simpl in *.
+    eapply VectorSpec.nth_order_ext.
+    eapply VectorSpec.nth_order_ext.
+
+    destruct x; simpl in *.
+    lia.
+    eapply IHv1.
+    lia.
+
+  Qed.
 
   Theorem point_mul_base_abstract_model_equiv : forall n x,
+    (bvToInt 384 n < 2 ^ Z.of_nat (S (S (S nw)) * wsize))%Z ->
     groupedMul_scalar_precomp numPrecompExponentGroups wsize (S (S (S nw))) 1 (bvToNat _ n) = Some x ->
+    S (S (S nw)) < numPrecompExponentGroups * precompTableSize -> 
     jac_eq (fromPoint x)
   (seqToProd
-     (point_mul_base_abstract Fsquare Fmul Fsub Fadd Fopp (prodToSeq (fromPoint g)) base_precomp_table numPrecompExponentGroups wsize (S (S (S nw))) n)).
+     (point_mul_base_abstract Fsquare Fmul Fsub Fadd Fopp base_precomp_table affine_default numPrecompExponentGroups wsize (S (S (S nw))) n)).
 
     intros.
     unfold point_mul_base_abstract, groupedMul_scalar_precomp in *.
@@ -4364,13 +5289,16 @@ Section ECEqProof.
     unfold conditional_subtract_if_even_mixed_abstract.
     unfold groupedMul_precomp in *.
     optSomeInv.
-    eapply permuteAndDouble_grouped_equiv_if in H1.
-    destruct H1.
+    eapply permuteAndDouble_grouped_equiv_if in H3.
+    destruct H3.
     intuition idtac; subst.
     unfold permuteAndDouble_grouped in *.
     optSomeInv.
     assert (List.length l0 = numPrecompExponentGroups).
-    admit.
+    rewrite <- (@decrExpsLs_length 1 l l0); eauto.
+    erewrite <- combineOpt_length; eauto.
+    rewrite map_length.
+    apply groupIndices_length.
 
     unfold Nat.pred.
 
@@ -4381,34 +5309,67 @@ Section ECEqProof.
            (S (S (S nw))) (mul_scalar_rwnaf_abstract wsize nw n))
         (forNats numPrecompExponentGroups) (replicate 3 (Vec 6 (bitvector 64)) (replicate 6 (bitvector 64) (intToBv 64 0)))))).
     
-    rewrite <- H2 at 2.
+    rewrite <- H4 at 2.
     replace (Datatypes.length l0) with (Datatypes.length (List.map (fun x : list WindowedMultiplication => x ++ [wm_Double 1]) l0)).
     eapply point_mul_base_abstract_list_equiv.
-    admit.
+    apply zero_point_jac_eq.
+ 
     reflexivity.
-    admit.
+    apply mul_scalar_rwnaf_abstract_OddWindow.
+    lia.
     rewrite groupMul_signedWindows_prog'_equiv.
     eapply groupMul_signedWindows_precomp_equiv.
     apply Jacobian.Proper_add.
     apply Jacobian.Proper_double.
-    admit.
+    lia.
     assert ((S (S (S nw))) <> 0)%nat by lia; eauto.
     assert (numPrecompExponentGroups <> 0)%nat. unfold numPrecompExponentGroups. lia. eauto.
     apply pExpMultiple_correct.
-    admit.
+    eapply Forall_flatten.
+    intros.
+    eapply in_map_iff in H6.
+    destruct H6.
+    intuition idtac; subst.
+    eapply Forall_app.
+    intuition idtac.
+    eapply decrExpsLs_ProgOddWindow; eauto.
+    intros.
+    eapply combineOpt_In in H3; eauto.
+    apply in_map_iff in H3.
+    destruct H3.
+    intuition idtac.
+    eapply multiSelect_OddWindow; [idtac | eapply H7].
+    eapply signedWindowsToProg_ProgOddWindow.
+    lia.
+    assert (S (S (S nw)) <> 0)%nat.
+    lia.
+    eauto.
+    unfold numPrecompExponentGroups.
+    lia.
+    rewrite recode_rwnaf_length.
+    lia.
+    lia.
+    apply recode_rwnaf_OddWindow.
+    lia.
+    rewrite bvToNat_toZ_equiv.
+    rewrite Z.shiftl_1_l.
+    eauto.
+    econstructor.   
+    unfold ProgOddWindow; simpl.
+    trivial.
+    econstructor.
+    
     eauto.
     unfold permuteAndDouble_grouped.
     rewrite map_length.
     unfold groupIndices in *.
-    rewrite H2.
+    rewrite H4.
     
     specialize (@mul_scalar_rwnaf_abstract_equiv n); intros.
-    assert (0 < wsize < 16)%nat by admit.
-    assert (bvToInt 384 n < 2 ^ Z.of_nat (S (S (S nw)) * wsize))%Z  by admit.
     intuition idtac.
-    apply forall2_map_eq in H5.
-    rewrite <- bvToNat_toZ_equiv in H5.
-    rewrite H5 in H1.
+    apply forall2_map_eq in H7.
+    rewrite <- bvToNat_toZ_equiv in H7.
+    rewrite H7 in H3.
     unfold Nat.pred.
     replace (combineOpt
     (List.map
@@ -4419,131 +5380,713 @@ Section ECEqProof.
     (combineOpt
       (List.map (multiSelect (signedWindowsToProg (List.map (sbvToInt 16) (mul_scalar_rwnaf_abstract wsize nw n)) 0))
          (groupIndices_h (S (S (S nw))) numPrecompExponentGroups numPrecompExponentGroups)) ).
-    rewrite H1.
     rewrite H3.
+    rewrite H5.
     reflexivity.
     reflexivity.
-    admit.
+    rewrite mul_scalar_rwnaf_abstract_length.
+    lia.
+    lia.
+    rewrite mul_scalar_rwnaf_abstract_length.
+    reflexivity.
+    lia.
+
     rewrite map_length.
     lia.
     rewrite map_length.
     reflexivity.
 
     case_eq (Nat.even (bvToNat 384 n)); intros.
-    rewrite H5 in H.
+    rewrite H7 in H0.
     optSomeInv.
     eapply point_add_mixed_eq.
-    (* g is affine *)
-    admit.
-
+    rewrite nth_order_opp_eq; try lia.
+    
+    unfold affine_g.
+    remember (List.nth 0 (List.nth 0 base_precomp_table []) affine_default) as z.
+    erewrite (@nth_order_append_vec_ge _ 2%nat 1%nat z).
+    rewrite nth_order_0_cons.
     eauto.
-    apply point_opp_equiv.
+    lia.
+    
+    eauto.
+    unfold affine_g.
+    eapply jac_eq_symm.
+    eapply jac_eq_fromPoint_opp.
+    replace ((Vector.append
+        (List.nth 0 (List.nth 0 base_precomp_table []) affine_default)
+        (cons (seq 6 (seq 64 bool)) p384_felem_one 0 (nil (seq 6 (seq 64 bool))))))
+    with
+    (affineToJac (List.nth 0 (List.nth 0 base_precomp_table []) affine_default)).
+    
+    eapply jac_eq_trans.
+    eapply base_precomp_table_correct.
+    lia.
+    unfold numPrecompExponentGroups.
+    specialize (PeanoNat.Nat.pow_nonzero 2 (Nat.pred wsize)).
+    intuition idtac.
+    lia.
+    rewrite NPeano.Nat.mul_0_r.
+    rewrite NPeano.Nat.mul_0_l.
+    simpl.
+    eapply jacobian_eq_jac_eq.
+    rewrite jac_add_comm.
+    apply jac_add_id_l.
+    generalize (List.nth 0 (List.nth 0 base_precomp_table []) affine_default); intros.
+    unfold affineToJac.
+    specialize (@SAWCorePrelude_proofs.rewrite_append _ _ _ (cons F 1 0 (nil F)) _ a0); intros.
+    apply inj_pair2 in H0.
+    unfold felem, F in *.
+    simpl in *.
+    unfold Vec in *.
+    unfold Bool in *.
+    eapply eq_trans.
+    eapply H0.
+    rewrite Fone_eq.
+    reflexivity.
 
-    rewrite H5 in H.
+    rewrite H7 in H0.
     optSomeInv.
     eauto.
 
-  Admitted.
+    Unshelve.
+    lia.
+
+  Qed.
+
+  Theorem groupMul_S_opp : forall x p,
+    Jacobian.eq (groupMul x p) (Jacobian.add (groupMul (S x) p) (Jacobian.opp p)).
+
+    intros.
+    simpl in *.
+    rewrite jac_add_comm.
+    rewrite <- jac_add_assoc.
+    symmetry.
+    transitivity (Jacobian.add zero_point (groupMul x p)).
+    eapply Jacobian.Proper_add.
+    rewrite jac_add_comm.
+    apply jac_opp_correct.
+    reflexivity.
+    apply jac_add_id_l.
+
+  Qed.
 
   Theorem groupedMulScalar_precomp_groupMul_equiv : forall n p,
+    (bvToInt _ n < 2 ^ (Z.of_nat (S (S (S nw)) * wsize))%nat)%Z ->
+    S (S (S nw)) < numPrecompExponentGroups * precompTableSize -> 
     groupedMul_scalar_precomp numPrecompExponentGroups wsize (S (S (S nw))) 1 (bvToNat 384 n) = Some p ->
     jac_eq (fromPoint (groupMul (bvToNat 384 n) g)) (fromPoint p).
 
     intros.
     unfold groupedMul_scalar_precomp in *.
     optSomeInv.
-    destruct (Nat.even (bvToNat 384 n)); optSomeInv.
-    admit.
 
     case_eq (groupedMul Jacobian.add zero_point Jacobian.double Jacobian.opp wsize (S (S (S nw))) g numPrecompExponentGroups 1
        (recode_rwnaf wsize (S (S (S nw))) (Z.of_nat (bvToNat 384 n)))); intros.
-    assert  (p == p0).
+    assert  (p0 == p1).
     eapply groupedMul_precomp_equiv; [idtac | idtac | idtac | idtac | idtac | idtac | idtac | idtac | eauto | eauto].
     eapply Jacobian.Proper_add.
     eapply Jacobian.Proper_double.
-    admit.
+    lia.
     lia.
     unfold numPrecompExponentGroups. lia.
     eapply pExpMultiple_correct.
-    admit.
-    admit.
-    eapply jacobian_eq_jac_eq.
-    symmetry.
-    rewrite H1.
-    
-    assert (groupMul_signedWindows Jacobian.add zero_point Jacobian.double wsize pMultiple (recode_rwnaf wsize (S (S (S nw))) (Z.of_nat (bvToNat 384 n))) == p0).
+    rewrite recode_rwnaf_length.
+    lia.
+    lia.
+    eapply recode_rwnaf_OddWindow.
+    lia.
+    rewrite bvToNat_toZ_equiv.
+    rewrite Z.shiftl_1_l.
+    eauto.
+
+    assert (groupMul_signedWindows Jacobian.add zero_point Jacobian.double wsize pMultiple (recode_rwnaf wsize (S (S (S nw))) (Z.of_nat (bvToNat 384 n))) == p1).
     eapply groupedMul_correct.
     eapply Jacobian.Proper_add.
-    admit.
-    admit.
-    admit.
+    apply jac_add_assoc.
+    apply jac_add_comm.
+    apply jac_add_id_l.
     eapply Jacobian.Proper_double.
-    admit.
+    apply jac_double_correct.
     eapply Proper_opp.
-    admit.
-    admit.
-    admit.
-    admit.
+    apply jac_opp_correct.
+    apply jac_opp_add_distr.
+    apply jac_opp_involutive.
+    lia.
     assert (S (S (S nw)) <> 0)%nat.
     lia.
     eauto.
     assert (numPrecompExponentGroups <> 0)%nat. unfold numPrecompExponentGroups. lia.
     eauto.
-    intros.
-    admit.
+    eauto.
     apply recode_rwnaf_length.
     lia.
-    admit.
+    apply recode_rwnaf_OddWindow.
+    lia.
+    rewrite bvToNat_toZ_equiv.
+    rewrite Z.shiftl_1_l.
     eauto.
-    rewrite <- H2.
-    
+    eauto.
+
     assert (groupMul_signedWindows Jacobian.add zero_point Jacobian.double wsize pMultiple
      (recode_rwnaf wsize (S (S (S nw))) (Z.of_nat (bvToNat 384 n))) ==
   groupMul_doubleAdd_signed Jacobian.add zero_point Jacobian.double Jacobian.opp (windowsToZ wsize (recode_rwnaf wsize (S (S (S nw))) (Z.of_nat (bvToNat 384 n)))) g).
     eapply groupMul_signedWindows_correct.
-    admit.
-    admit.
-    admit.
-    admit.
-    admit.
-    admit.
+    eapply Jacobian.Proper_add.
+    apply jac_add_assoc.
+    apply jac_add_comm.
+    apply jac_add_id_l.
+    eapply Jacobian.Proper_double.
+    apply jac_double_correct.
     eapply Proper_opp.
-    admit.
-    admit.
-    admit.
-    admit.
-    assert (S (S (S nw)) <> 0)%nat.
+    apply jac_opp_correct.
+    apply jac_opp_add_distr.
+    apply jac_opp_involutive.
     lia.
-    admit.
-    admit.
-    rewrite H3.
+    eauto.
+    apply recode_rwnaf_OddWindow.
+    lia.
+    rewrite bvToNat_toZ_equiv.
+    rewrite Z.shiftl_1_l.
+    eauto.
+
+    case_eq (Nat.even (bvToNat 384 n)); intros;
+    rewrite H7 in H1.
+    replace (windowsToZ wsize (recode_rwnaf wsize (S (S (S nw))) (Z.of_nat (bvToNat 384 n)))) with (Z.of_nat (S (bvToNat 384 n))) in *.
+
+    assert (groupMul_doubleAdd_signed Jacobian.add zero_point Jacobian.double Jacobian.opp (BinInt.Z.of_nat (S (bvToNat 384 n))) g ==
+  GroupMulWNAF.groupMul Jacobian.add zero_point (S(bvToNat 384 n)) g).
+    eapply groupMul_signed_correct.
+    eapply Jacobian.Proper_add.
+    apply jac_add_assoc.
+    apply jac_add_comm.
+    apply jac_add_id_l.
+    eapply Jacobian.Proper_double.
+    apply jac_double_correct.
+
+    optSomeInv.
+    eapply jacobian_eq_jac_eq.
+    assert (Jacobian.eq (groupMul (bvToNat 384 n) g) (Jacobian.add (groupMul (S(bvToNat 384 n)) g)  (Jacobian.opp g))).
+    apply groupMul_S_opp.
+    rewrite H1.
+    eapply Jacobian.Proper_add.
+    rewrite H4.
+    rewrite <- H8.
+    rewrite <- H6.
+    eapply H5.
+    reflexivity.
+
     symmetry.
-    replace (windowsToZ wsize (recode_rwnaf wsize (S (S (S nw))) (Z.of_nat (bvToNat 384 n)))) with (Z.of_nat (bvToNat 384 n)).
+    assert (RegularReprOfZ wsize (recode_rwnaf wsize (S (S (S nw))) (Z.of_nat (bvToNat 384 n))) (Z.of_nat (bvToNat 384 n)) ).
+    eapply recode_rwnaf_correct.
+    lia.
+    lia.
+    rewrite Z.shiftl_mul_pow2.
+    rewrite Z.mul_1_l.
+    rewrite bvToNat_toZ_equiv.
+    eauto.
+    lia.
+    unfold RegularReprOfZ in *.
+    intuition idtac.
+    erewrite even_of_nat_equiv in H7.
+    rewrite <- Z.negb_even in H10.
+    rewrite H7 in H10.
+    Local Opaque recode_rwnaf.
+    simpl in *.
+    rewrite H10.
+    rewrite Znat.Zpos_P_of_succ_nat.
+    reflexivity.
+    eauto.
+
+    replace (windowsToZ wsize (recode_rwnaf wsize (S (S (S nw))) (Z.of_nat (bvToNat 384 n)))) with (Z.of_nat (bvToNat 384 n)) in *.
+
     assert (groupMul_doubleAdd_signed Jacobian.add zero_point Jacobian.double Jacobian.opp (BinInt.Z.of_nat (bvToNat 384 n)) g ==
   GroupMulWNAF.groupMul Jacobian.add zero_point (bvToNat 384 n) g).
     eapply groupMul_signed_correct.
-    admit.
-    admit.
-    admit.
-    admit.
-    admit.
-    admit.
+    eapply Jacobian.Proper_add.
+    apply jac_add_assoc.
+    apply jac_add_comm.
+    apply jac_add_id_l.
+    eapply Jacobian.Proper_double.
+    apply jac_double_correct.
+
+    optSomeInv.
+    eapply jacobian_eq_jac_eq.
+    symmetry.
     rewrite H4.
+    rewrite <- H5.
+    rewrite H6.
+    eapply H8.
+
+    symmetry.
+    assert (RegularReprOfZ wsize (recode_rwnaf wsize (S (S (S nw))) (Z.of_nat (bvToNat 384 n))) (Z.of_nat (bvToNat 384 n)) ).
+    eapply recode_rwnaf_correct.
+    lia.
+    lia.
+    rewrite Z.shiftl_mul_pow2.
+    rewrite Z.mul_1_l.
+    rewrite bvToNat_toZ_equiv.
+    eauto.
+    lia.
+    unfold RegularReprOfZ in *.
+    intuition idtac.
+    erewrite even_of_nat_equiv in H7.
+    rewrite <- Z.negb_even in H10.
+    rewrite H7 in H10.
+    Local Opaque recode_rwnaf.
+    simpl in *.
+    rewrite H10.
     reflexivity.
+    eauto.
+    
+    exfalso.
+    eapply groupedMul_precomp_groupedMul_Some; [idtac | idtac | eauto | eauto].
+    rewrite recode_rwnaf_length.
+    eauto.
+    lia.
+    eapply recode_rwnaf_OddWindow.  
+    lia.
+    rewrite bvToNat_toZ_equiv.
+    rewrite Z.shiftl_1_l.
+    eauto.
 
-  Admitted.
+  Qed.
 
-  Theorem point_mul_base_abstract_correct : forall n,
+  Theorem point_mul_base_abstract_correct : forall n x,
+    (bvToInt 384 n < 2 ^ Z.of_nat (S (S (S nw)) * wsize))%Z ->
+    S (S (S nw)) < numPrecompExponentGroups * precompTableSize -> 
+    (groupedMul_scalar_precomp numPrecompExponentGroups wsize (S (S (S nw))) 1 (bvToNat 384 n)) = Some x -> 
     jac_eq (fromPoint (groupMul (bvToNat 384 n) g))
-   (seqToProd (point_mul_base_abstract Fsquare Fmul Fsub Fadd Fopp (prodToSeq (fromPoint g)) base_precomp_table numPrecompExponentGroups wsize (S (S (S nw))) n)).
+   (seqToProd (point_mul_base_abstract Fsquare Fmul Fsub Fadd Fopp base_precomp_table affine_default numPrecompExponentGroups wsize (S (S (S nw))) n)).
 
     intros.
 
-    case_eq (groupedMul_scalar_precomp numPrecompExponentGroups wsize (S (S (S nw))) 1 (bvToNat 384 n)); intros.
     eapply jac_eq_trans; [idtac | eapply point_mul_base_abstract_model_equiv]; eauto.
     eapply groupedMulScalar_precomp_groupMul_equiv; eauto.
 
-  Admitted.
+  Qed.
+
+
+  Definition decrExp'(n : nat) (n' : nat) :=  if Compare_dec.le_dec n n' then Some (n' - n)%nat else None.
+
+  Fixpoint decrExpLs' (n : nat) (ps : list nat)  :=
+  match ps with
+  | [] => Some []
+  | p :: ps' =>
+      match decrExp' n p with
+      | Some p' => match decrExpLs' n ps' with
+                   | Some ps'' => Some (p' :: ps'')
+                   | None => None
+                   end
+      | None => None
+      end
+  end.
+
+  Fixpoint decrExpsLs' (n : nat) (ps : list (list nat)) : option (list (list nat)) :=
+  match ps with
+  | [] => Some []
+  | p :: ps' =>
+      match decrExpsLs' n ps' with
+      | Some x => match combineOpt (List.map (decrExpLs' n) x) with
+                  | Some x' => Some (p :: x')
+                  | None => None
+                  end
+      | None => None
+      end
+  end.
+
+  Definition wmIsMultiple (y : nat)(x : WindowedMultiplication) :=
+    match x with
+    | wm_Add n w => Nat.gcd n y = y
+    | wm_Double  n => True
+    end.
+
+  Theorem combineOpt_map_Some : forall (A B : Type)(f : A -> option B) (x : list A)(pa : A -> Prop)(pb : A -> B -> Prop),
+    List.Forall pa x -> 
+    (forall a, pa a -> exists b, f a = Some b /\ pb a b) -> 
+    exists y, combineOpt (List.map f x) = Some y /\ List.Forall2 pb x y.
+
+    induction x; intros; simpl in *.
+    exists List.nil.
+    intuition idtac.
+    econstructor.
+
+    inversion H; clear H; subst.
+    edestruct (H0 a0); eauto.
+    intuition idtac.
+    rewrite H5.
+    edestruct IHx; intuition idtac.
+    eauto.
+    edestruct (H0 a1); intuition idtac.
+    exists x1; intuition idtac.
+    eauto.
+    rewrite H9.
+    econstructor; intuition idtac.
+    econstructor; intuition idtac.    
+
+  Qed.
+
+  Theorem nth_error_Some_ex : forall (A : Type)n (ls : list A),
+    (n < List.length ls) ->
+    exists y,
+      nth_error ls n = Some y.
+
+    induction n; destruct ls; intros; simpl in *; try lia.
+    econstructor; eauto.
+    edestruct IHn; eauto. lia. 
+
+  Qed.
+
+  Theorem multiSelect_signedWindowsToProg_Some :  forall a0 ws,
+    List.Forall (fun x => x < List.length ws) a0 -> 
+    exists b0 : list WindowedMultiplication,
+    multiSelect (signedWindowsToProg ws 0) a0 = Some b0 /\
+    List.Forall2 (fun (x : nat) (y : WindowedMultiplication) => exists w : Z, y = wm_Add x w) a0 b0.
+  
+    induction a0; intros; simpl in *.
+    inversion H; clear H; subst.
+    exists List.nil.
+    intuition idtac.
+    econstructor.
+
+    inversion H; clear H; subst.
+    eapply IHa0 in H3.
+    destruct H3.
+    destruct H.
+    unfold multiSelect in *.
+    simpl.
+    edestruct (@nth_error_Some_ex  _ a0 (signedWindowsToProg ws 0)).
+    rewrite signedWindowsToProg_length.
+    lia.    
+    pose proof H1.
+    eapply nth_error_signedWindowsToProg_Some_add in H1.
+    destruct H1.
+    intuition idtac; subst; simpl in *.
+    rewrite H3.
+    rewrite H.
+    econstructor; intuition idtac.
+    econstructor.
+    econstructor.
+    reflexivity.
+    apply H0.
+  Qed.
+
+  Theorem combineOpt_Some : forall (A : Type)(ls : list (option A)) x,
+    combineOpt ls = Some x ->
+    List.Forall2 (fun x y => x = Some y) ls x.
+
+    induction ls; intros; simpl in *; optSomeInv.
+    econstructor.
+
+    econstructor.
+    trivial.
+    eauto.
+
+  Qed.
+
+  Theorem decrExpLs'_Some_eq : forall perm perm' x,
+    decrExpLs' 1 perm = Some perm' ->  
+    List.Forall2 (fun (x : nat) (y : WindowedMultiplication) => exists w : Z, y = wm_Add x w) perm x -> 
+    exists y, decrExpLs 1 x = Some y /\  List.Forall2 (fun (x : nat) (y : WindowedMultiplication) => exists w : Z, y = wm_Add x w) perm' y.
+
+    induction perm; intros; simpl in *.
+    optSomeInv.
+    inversion H0; clear H0; subst.
+    simpl.
+    econstructor.
+    split.
+    reflexivity.
+    econstructor.
+    
+    optSomeInv.
+    inversion H0; clear H0; subst.
+    edestruct IHperm; eauto.
+    destruct H.
+    simpl.
+    rewrite H.
+    destruct H4. subst.
+    
+    unfold decrExp' in *.
+    destruct (Compare_dec.le_dec 1 a0).
+    optSomeInv.   
+    unfold decrExp.
+    destruct (Compare_dec.le_dec 1 a0).
+    econstructor.
+    split.
+    reflexivity.
+    econstructor; trivial.
+    econstructor.
+    reflexivity.
+    lia.
+    discriminate.
+
+  Qed.
+
+
+  Theorem map_decrExpLs'_Some_eq : forall perm perm' x,
+    combineOpt (List.map (decrExpLs' 1) perm) = Some perm' ->  
+    List.Forall2 (List.Forall2 (fun (x : nat) (y : WindowedMultiplication) => exists w : Z, y = wm_Add x w)) perm x -> 
+    exists y, combineOpt (List.map (decrExpLs 1) x) = Some y /\  List.Forall2 (List.Forall2 (fun (x : nat) (y : WindowedMultiplication) => exists w : Z, y = wm_Add x w)) perm' y.
+
+    induction perm; intros; simpl in *.
+    optSomeInv.
+    inversion H0; clear H0; subst.
+    simpl.
+    econstructor.
+    split.
+    reflexivity.
+    econstructor.
+
+    optSomeInv.
+    inversion H0; clear H0; subst.
+    edestruct IHperm; eauto.
+    destruct H.
+    simpl.
+    rewrite H.
+    edestruct decrExpLs'_Some_eq; eauto.
+    destruct H3.
+    rewrite H3.
+    econstructor.
+    split.
+    reflexivity.
+    econstructor; trivial.    
+
+  Qed. 
+
+  Theorem decrExpsLs'_Some_eq : forall perm perm' x,
+    decrExpsLs' 1 perm = Some perm' ->
+    List.Forall2 (List.Forall2 (fun (x : nat) (y : WindowedMultiplication) => exists w : Z, y = wm_Add x w)) perm x -> 
+    exists y, decrExpsLs 1 x = Some y /\  List.Forall2 (List.Forall2 (fun (x : nat) (y : WindowedMultiplication) => exists w : Z, y = wm_Add x w)) perm' y. 
+
+    induction perm; intros; simpl in *.
+    optSomeInv.
+    inversion H0; clear H0; subst.
+    simpl.
+    econstructor.
+    split.
+    reflexivity.
+    econstructor.
+
+    optSomeInv.
+    inversion H0; clear H0; subst.
+    simpl.
+    edestruct IHperm; eauto.
+    destruct H.
+    rewrite H.
+    edestruct map_decrExpLs'_Some_eq; eauto.
+    destruct H3.
+    rewrite H3.
+    econstructor.
+    split.
+    reflexivity.
+    econstructor; trivial.
+
+   Qed.
+
+  Theorem Forall2_Forall_impl : forall (A B : Type)(lsa : list A)(lsb : list B) (P1: A -> B -> Prop) (P2 : A -> Prop),
+    List.Forall2 P1 lsa lsb ->
+    (forall a b, P1 a b -> P2 a) ->
+    List.Forall P2 lsa.
+
+    induction lsa; intros; simpl in *.
+    inversion H; clear H; subst.
+    econstructor.
+
+    inversion H; clear H; subst.
+    econstructor.
+    eauto.
+    eauto.
+
+  Qed.
+
+  Theorem Forall_Forall2_impl: forall (A B : Type)(lsa : list A)(lsb : list B) (P2 : A -> Prop),
+    List.Forall P2 lsa -> 
+    (List.length lsb = List.length lsa) ->
+    List.Forall2 (fun a b => P2 a) lsa lsb.
+
+    induction lsa; intros; simpl in *.
+    destruct lsb0; simpl in *; try lia.
+    econstructor.
+
+    inversion H; clear H; subst.
+    destruct lsb0; simpl in *; try lia.
+    econstructor; eauto.
+
+  Qed.
+
+  Theorem Forall2_impl_2 : forall (A B : Type)(P1 P2 : A -> B -> Prop) lsa lsb,
+    List.Forall2 P1 lsa lsb ->
+    List.Forall2 P2 lsa lsb ->
+    List.Forall2 (fun a b => P1 a b /\ P2 a b) lsa lsb.
+
+    induction 1; intros; simpl in *.
+    inversion H; clear H; subst.
+    econstructor.
+    inversion H1; clear H1; subst.
+    econstructor.
+    intuition idtac.
+    eauto.
+  Qed.
+
+  Theorem permuteAndDouble_grouped_Some : forall d ws perm perm',
+    List.Forall (List.Forall (fun x : nat => x < Datatypes.length ws)) perm -> 
+    d = List.length perm -> 
+    decrExpsLs' 1 perm = Some perm' ->
+    List.Forall (List.Forall (fun y => Nat.gcd y d= d)) perm' -> 
+    exists x, permuteAndDouble_grouped ws 1 perm = Some x /\ 
+    List.Forall (List.Forall (wmIsMultiple d)) x.
+ 
+    intros.
+    unfold permuteAndDouble_grouped.
+    subst.
+    edestruct (@combineOpt_map_Some _ _  (multiSelect (signedWindowsToProg ws 0)) perm (List.Forall (fun x => x < List.length ws))  (List.Forall2 (fun x y => exists w, y = wm_Add x w))).
+    trivial.
+    intros.
+    eapply multiSelect_signedWindowsToProg_Some.
+    trivial.
+    destruct H0.
+    rewrite H0.
+    edestruct (@decrExpsLs'_Some_eq perm perm' x); eauto.
+    destruct H4.
+    rewrite H4.
+    econstructor.
+    econstructor.
+    reflexivity.
+
+    eapply Forall_map.
+    apply (@Forall_Forall2_impl _ _ _ x0) in H2.
+    eapply (@Forall2_Forall_impl _ _ _ perm').
+    eapply forall2_symm.
+    eapply Forall2_impl_2.
+    eapply H2.
+    eapply H5.
+    intros.
+    simpl in *.
+    destruct H6.
+    eapply Forall_app.
+    split.
+    apply (@Forall_Forall2_impl _ _ _ a0) in H6.
+    eapply (@Forall2_Forall_impl _ _ _ b0).
+    eapply forall2_symm.
+    eapply Forall2_impl_2.
+    eapply H6.
+    eapply H7.
+    intros.
+    simpl in *.
+    destruct H8.
+    destruct H9.
+    subst.
+    unfold wmIsMultiple.
+    trivial.
+    symmetry.
+    eapply Forall2_length_eq; eauto.
+    econstructor.
+    unfold wmIsMultiple.
+    trivial.
+    econstructor.
+    symmetry.
+    eapply Forall2_length_eq; eauto.
+
+  Qed.
+
+  Theorem groupMul_signedWindows_precomp_Some : forall x, 
+    List.Forall (wmIsMultiple 4) x ->
+    exists y,
+    groupMul_signedWindows_precomp Jacobian.add Jacobian.double 5 g 4 pExpMultiple zero_point x = Some y.
+
+    induction x; intros; simpl in *.
+    econstructor.
+    intros.
+    reflexivity.
+
+    inversion H; clear H; subst.
+    destruct IHx; trivial.
+    rewrite H.
+    unfold evalWindowMult_precomp.
+    destruct a0.
+    destruct (divides 4 n).
+    econstructor.
+    intros.
+    reflexivity.
+    unfold wmIsMultiple in H2.
+    rewrite NPeano.Nat.gcd_comm in n0.
+    intuition idtac.
+    
+    econstructor.
+    reflexivity.
+
+  Qed.
+
+  Theorem lsMultiples_all_lt : forall z x y,
+    List.Forall (fun x0 : nat => x0 < z) (lsMultiples z x y).
+
+    induction z; intros; simpl in *.
+    econstructor.
+
+    eapply Forall_app.
+    split.
+    eapply List.Forall_impl; eauto.
+    intros; simpl in *.
+    lia.
+
+    destruct (isMultiple z x y); econstructor.
+    lia.
+    econstructor.
+
+  Qed.
+
+  Theorem groupIndices_h_all_lt : forall  y z x,
+    List.Forall (List.Forall (fun x : nat => x < z)) (groupIndices_h z x y).
+
+    induction y; intros; simpl in *.
+    econstructor.
+
+    eapply Forall_app.
+    split; eauto.
+    econstructor.
+    eapply lsMultiples_all_lt.
+    econstructor.
+   
+
+  Qed.
+
+  Theorem groupIndices_all_lt : forall nw x,
+    List.Forall (List.Forall (fun x : nat => x < nw)) (groupIndices nw x).
+
+    intros.
+    apply groupIndices_h_all_lt.
+
+  Qed.
+
+  Theorem groupedMul_scalar_precomp_Some_P384_concrete : forall n, exists x, 
+    groupedMul_scalar_precomp 4 5 77 1 n = Some x.
+
+    intros.
+    unfold groupedMul_scalar_precomp.
+    unfold groupedMul_precomp.
+
+    assert  (exists x, permuteAndDouble_grouped (recode_rwnaf 5 77 (Z.of_nat n)) 1 (groupIndices 77 4) = Some x /\
+        List.Forall (List.Forall (wmIsMultiple 4)) x).
+    eapply permuteAndDouble_grouped_Some.
+    apply groupIndices_all_lt.
+    rewrite groupIndices_length. reflexivity.
+    reflexivity.
+    repeat econstructor.
+
+    destruct H.
+    destruct H.
+    erewrite permuteAndDouble_grouped_equiv; eauto.
+    edestruct (groupMul_signedWindows_precomp_Some).
+    eapply Forall_flatten.
+    intros.
+    eapply (@List.Forall_forall _ _ x).
+    trivial.
+    eauto.
+    
+    rewrite H1.
+    destruct (Nat.even n); econstructor; eauto.
+
+  Qed.
 
   End PointMulAbstract.
 
@@ -4595,33 +6138,6 @@ Section ECEqProof.
 
   Qed.
 
-  Theorem Forall2_map_l : forall (A B C: Type) P (f : A -> C) lsa (lsb : list B),
-    List.Forall2 (fun x y => P (f x) y) lsa lsb ->
-    List.Forall2 P (List.map f lsa) lsb.
-
-    induction 1; intros; simpl in *.
-    econstructor.
-    econstructor; eauto.
-
-  Qed.
-
-  Theorem Forall2_same_Forall : forall (A : Type) P (ls : list A),
-    List.Forall (fun x => P x x) ls ->
-    List.Forall2 P ls ls.
-
-    induction 1; intros; simpl in *.
-    econstructor.
-    econstructor; eauto.
-
-  Qed.
-
-  Theorem Forall_I : forall (A : Type)(ls : list A),
-    List.Forall (fun x => True) ls.
-
-    induction ls; intuition idtac; econstructor; eauto.
-
-  Qed.
-
   (**
   The base point multiplication spec extracted from Cryptol is equivalent to the basic group
   multiplication operation on the base point. 
@@ -4631,38 +6147,84 @@ Section ECEqProof.
 
   Section PointMulBase.
   Variable g : point.
+  Variable affine_default : affine_point.
+  Hypothesis affine_default_on_curve : 
+    on_curve affine_default.
+
+  Hypothesis preCompTable_on_curve: forall (ls : list affine_point) (p : affine_point), List.In p ls -> List.In ls preCompTable -> on_curve p.
+
+  Definition wsize := 5.
   Hypothesis preCompTable_correct : forall n1 n2,
-    jac_eq (seqToProd (affineToJac (List.nth n2 (List.nth n1 preCompTable List.nil) affine_zero))) (fromPoint (groupMul ((2 * n2 + 1) * (Nat.pow 2 (n1 * 20))) g)).
+    (n1 < List.length preCompTable)%nat ->
+    (n2 < Nat.pow 2 (numPrecompExponentGroups wsize))%nat-> 
+    jac_eq (seqToProd (affineToJac (List.nth n2 (List.nth n1 preCompTable List.nil) affine_default))) (fromPoint (groupMul ((2 * n2 + 1) * (Nat.pow 2 (n1 * (numPrecompExponentGroups wsize) * wsize))) g)).
+
+  Hypothesis preCompTable_entry_length : forall ls,
+    List.In ls preCompTable ->
+    Datatypes.length ls = Nat.pow 2 (numPrecompExponentGroups wsize).
+
+
+  Theorem preCompTable_length : 
+    Datatypes.length preCompTable = 20%nat.
+
+    intros.
+    reflexivity.
+
+   Qed.
+
+  Hypothesis Fone_eq : 
+    p384_felem_one = 1.
+
+  
+  Variable pMultiple : Z -> point.
+  Hypothesis pMultiple_correct : forall w,
+    OddWindow wsize w ->
+    pMultiple w == groupMul_doubleAdd_signed Jacobian.add zero_point Jacobian.double Jacobian.opp w g.
+
 
   Theorem point_mul_base_correct : forall (n : seq 384 Bool),
+      (bvToInt 384 n < 2 ^ Z.of_nat (77 * 5))%Z ->
       jac_eq (fromPoint (groupMul (bvToNat _ n) g))
       (seqToProd (point_mul_base n)).
 
     intros.
+    edestruct (groupedMul_scalar_precomp_Some_P384_concrete); eauto.
     unfold point_mul_base.
-    rewrite (@point_mul_base_abstract_equiv _ _ _ _ _ (prodToSeq (fromPoint g)) preCompTable).
-    eapply point_mul_base_abstract_correct.
-    lia.
-    lia.
-    apply O.
-    admit.
-    intros.
-    unfold numPrecompExponentGroups.
-    replace (n1 * 4 * 5)%nat with (n1 * 20)%nat.
-    eapply preCompTable_correct.
-    lia.
+    assert (1 < wsize < 16)%nat.
+    unfold wsize; lia.
+    assert (List.Forall2 (fun (x : list affine_point) (y : t affine_point 16) => x = to_list y) preCompTable
+         (to_list p384_g_pre_comp)).
+    unfold preCompTable.
     eapply Forall2_map_l.
     eapply Forall2_same_Forall.
-    eapply (@List.Forall_impl _ (fun x => True)).
+    eapply List.Forall_impl; [idtac | eapply Forall_I].
     intros.
-
     trivial.
-    eapply Forall_I.
-    
-    (* need to allow non-affine g *)
-    admit.
+    eauto.
+    rewrite (@point_mul_base_abstract_equiv _ _ _ _ _ preCompTable H2 affine_default).
+    eapply point_mul_base_abstract_correct.   
+    eauto.
+    eauto.
+    eapply preCompTable_entry_length.
+    eauto.
+    eauto.  
+    unfold precompTableSize.
+    match goal with 
+    | [ |- (_ < _ * ?a)%nat] => replace a with 20%nat
+    end.
+    unfold numPrecompExponentGroups, wsize.
+    simpl; lia.
+    symmetry.
+    apply preCompTable_length.
+    eauto.
 
-  Admitted.
+    Unshelve.
+    lia.
+    lia.
+    eauto.
+    eauto.
+
+  Qed.
 
   End PointMulBase.
 
