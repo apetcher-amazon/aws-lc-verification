@@ -436,7 +436,8 @@ Section ECEqProof.
 
   Qed.
 
-  Variable Fsquare : F -> F.
+  Definition Fsquare x := Fmul x x.
+  Local Opaque Fsquare.
 
   Definition point_add := point_add Fsquare Fmul Fsub Fadd.
   Definition point_add_jac := point_add false.
@@ -447,7 +448,10 @@ Section ECEqProof.
 
 
   (* Assume that squaring satisifes its spec. *)
-  Hypothesis felem_sqr_spec : forall (x : F), Fsquare x = Fmul x x.
+  Theorem felem_sqr_spec : forall (x : F), Fsquare x = Fmul x x.
+
+    intros. reflexivity.
+  Qed.
 
   (* Assume that the curve parameter a = -3, as it is for P-384 and other curves in the same family *)
   Hypothesis a_is_minus_3 : a = Fopp (1 + 1 + 1).
@@ -1140,7 +1144,7 @@ Section ECEqProof.
   
   (* Discriminant is non-zero *)
   (* When a=-3 and characerteristic is large, this follows from b<>2 and b<>-2 *)
-  Variable _plus_minus_2 : 
+  Variable b_ne_plus_minus_2 : 
     ~((Feq b (1 + 1)) \/ (Feq b (Fopp (1 + 1)))).
 
   Theorem discriminant_nonzero :
@@ -1170,10 +1174,10 @@ Section ECEqProof.
     assert (Feq ((b + (1 + 1)) * (b  + (Fopp (1 + 1)))) 0).
     nsatz.
     destruct (Feq_dec b (1+1)).
-    apply _plus_minus_2.
+    apply b_ne_plus_minus_2.
     left.
     trivial.
-    apply _plus_minus_2.
+    apply b_ne_plus_minus_2.
     right.
     assert (Feq ((b + (1 + 1)) * ((Finv (b + Fopp (1 + 1)))* ( (b + Fopp (1 + 1))))) 0).
     nsatz.
@@ -6225,6 +6229,8 @@ Section ECEqProof.
     eauto.
 
   Qed.
+
+  Print Assumptions point_mul_base_correct.
 
   End PointMulBase.
 

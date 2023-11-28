@@ -116,15 +116,93 @@ Definition mul_scalar_rwnaf_odd_abstract wsize numWindows s :=
                 mul_scalar_rwnaf_odd_loop_body_abstract wsize (snd __p2)) 
                (toN_int numWindows) (mul_scalar_rwnaf_odd_loop_body_abstract wsize s)))))].
 
+Theorem shrB_ls_equiv : forall n (y : spec.BITS n), 
+  (tuple.tval (operations.shrB y)) = (rev (shiftR1_ls false (rev (tuple.tval y)))).
+
+  intros.
+  unfold operations.shrB.
+  destruct n.
+  destruct y.
+  destruct tval; simpl in *; try lia.
+  reflexivity.
+  inversion i.
+
+  unfold spec.joinmsb0.
+  rewrite joinmsb_ls_eq.
+  rewrite droplsb_ls_eq.
+  unfold shiftR1_ls, shiftout_ls.
+  simpl.
+  destruct y.
+  destruct tval.
+  simpl in *.
+  inversion i.
+
+  simpl.
+  replace (Datatypes.length (rev tval ++ [b])) with (Datatypes.length (0%bool :: rev tval ++ [b]) - 1).
+  rewrite <- skipn_rev.
+  simpl.
+  rewrite rev_app_distr.
+  rewrite rev_involutive.
+  simpl.
+  reflexivity.
+  rewrite app_length.
+  simpl.
+  rewrite app_length.
+  simpl.
+  lia.
+Qed.
+
+
+Theorem shrBn_ls_equiv : forall n x (y : spec.BITS n), 
+  (tuple.tval (operations.shrBn y x)) = rev (shiftR_ls false (rev (tuple.tval y)) x).
+
+  induction x; intros; simpl in *.
+  rewrite rev_involutive.
+  reflexivity.
+  rewrite shrB_ls_equiv.
+  rewrite IHx.
+  rewrite rev_involutive.
+  reflexivity.
+
+Qed.
+
+
+Theorem bvShr_shiftR_equiv : forall x n v,
+  bvShr n v x = shiftR n _ false v x.
+
+  Local Transparent bvShr.
+
+  intros.
+  apply eq_if_to_list_eq.
+  rewrite shiftR_ls_equiv.
+  unfold bvShr.
+  rewrite <- bitsToBv_ls_eq.
+  rewrite shrBn_ls_equiv.
+  rewrite bvToBITS_ls_equiv.
+  unfold bvToBITS_ls.
+  rewrite rev_involutive.
+  unfold bitsToBv_ls.
+  rewrite rev_involutive.
+  reflexivity.
+
+  Local Opaque bvShr.
+
+Qed.
+
 Theorem bvUDiv_nat_equiv : forall  n v1 v2,
   bvUDiv n v1 v2 = bvNat _ (Nat.div (bvToNat _ v1) (bvToNat _ v2)).
 
-Admitted.
+  Local Transparent bvUDiv.
 
-Theorem bvShr_shiftR_equiv : forall n x v,
-  bvShr n v x = shiftR n _ false v x.
+  intros.
+  unfold bvUDiv.
+  unfold bvNat.
+  rewrite Znat.Nat2Z.inj_div.
+  repeat rewrite bvToNat_toZ_equiv.
+  reflexivity.
 
-Admitted.
+Qed.
+
 
 Local Open Scope Z_scope.
 
