@@ -2,7 +2,7 @@
 SPDX-License-Identifier: Apache-2.0 *)
 
 (* Generalized low-level specification for NIST prime curve arithmetic. These functions
-are equivalent to the functions extracted from Crypto, and the following changes are made:
+are equivalent to the functions extracted from Cryptol, and the following changes are made:
 * Operations using Cryptol sequences are replaced with equivalent operations on vectors. 
 * Vectors are replaced with lists in situations where a list is more natural (e.g. folding 
   over a list).
@@ -33,7 +33,7 @@ From CryptolToCoq Require Import SAWCorePreludeExtra.
 From CryptolToCoq Require Import SAWCoreBitvectors.
 From CryptolToCoq Require Import Everything.
 
-
+From EC Require Import WindowedMulMachine.
 From EC Require Import CryptolToCoq_equiv.
 From EC Require Import EC_P384_5.
 
