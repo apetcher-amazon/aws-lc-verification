@@ -26,34 +26,12 @@ values. We only need to double to get from one group to the next. E.g. with a wi
 and then the accumulator is doubled wsize times. 
 *)
 
-Section GeneratorMulWNAF.
+(* This file contains the proof of correctness for this algorithm. It uses the general purpose windowed multiplication machine
+to transform the wnaf multiplication algorithm into the algorithm above. *)
 
-  Variable GroupElem : Type.
-  
-  Context `{GroupElem_eq : Setoid GroupElem}.
+Section GeneratorMul.
 
-  Variable groupAdd : GroupElem -> GroupElem -> GroupElem.
-  Hypothesis groupAdd_proper : Proper (equiv ==> equiv ==> equiv) groupAdd.
-
-  Hypothesis groupAdd_assoc : forall a b c,
-    groupAdd (groupAdd a b) c == groupAdd a (groupAdd b c).
-  Hypothesis groupAdd_comm : forall a b,
-    groupAdd a b == groupAdd b a.
-
-  Variable idElem : GroupElem.
-  Hypothesis groupAdd_id : forall x, groupAdd idElem x == x.
-
-  Variable groupDouble : GroupElem -> GroupElem.
-  Hypothesis groupDouble_proper : Proper (equiv ==> equiv) groupDouble.
-  Hypothesis groupDouble_correct : forall x,
-    groupDouble x == groupAdd x x.
-
-  Variable groupInverse : GroupElem -> GroupElem.
-  Hypothesis groupInverse_proper : Proper (equiv ==> equiv) groupInverse.
-  Hypothesis groupInverse_id : groupInverse idElem == idElem.
-  Hypothesis groupInverse_correct : forall e, groupAdd e (groupInverse e) == idElem.
-  Hypothesis groupInverse_add_distr : forall e1 e2, groupInverse (groupAdd e1 e2) == groupAdd (groupInverse e1) (groupInverse e2).
-  Hypothesis groupInverse_involutive : forall e, groupInverse (groupInverse e) == e.
+  Context `{dbl_grp : CommutativeGroupWithDouble}.
 
   Variable RegularWindow : SignedWindow -> Prop.
   Variable wsize : nat.
@@ -67,16 +45,14 @@ Section GeneratorMulWNAF.
   Variable precompTableSize : nat.
 
   Definition OddWindow := OddWindow wsize.
-  Definition groupMul_doubleAdd_signed := groupMul_doubleAdd_signed groupAdd idElem groupDouble groupInverse.
   Variable pMultiple : SignedWindow -> GroupElem.
   Hypothesis pMultiple_correct : forall w,
     OddWindow w ->
     pMultiple w == groupMul_doubleAdd_signed w p.
 
-  Definition groupMul_signedWindows := groupMul_signedWindows groupAdd idElem groupDouble wsize pMultiple.
-  Definition groupMul_signedWindows_prog := groupMul_signedWindows_prog groupAdd idElem groupDouble groupInverse p wsize.
-  Definition groupDouble_n := groupDouble_n groupDouble.
-  Definition evalWindowMult := evalWindowMult groupAdd idElem groupDouble groupInverse p wsize.
+  Definition groupMul_signedWindows := groupMul_signedWindows wsize pMultiple.
+  Definition groupMul_signedWindows_prog := groupMul_signedWindows_prog p wsize.
+  Definition evalWindowMult := evalWindowMult p wsize.
 
   (* Start with an algorithm that performs the computation in the correct order, but doesn't do any table lookups. 
   This is the basic odd signed window multiplication operation with the additions permuted, and with some accumulator 
@@ -112,6 +88,8 @@ Section GeneratorMulWNAF.
     OddWindow w ->
     pExpMultiple n w == groupMul_doubleAdd_signed (Z.shiftl w (Z.of_nat (numPrecompExponentGroups * wsize * n))) p.
 
+  (* An alternative semantics for double/add operations that perform all additions by a table lookup. If the required value is not
+  in the table, then the operation fails. *)
   Definition evalWindowMult_precomp(p : GroupElem) (m : WindowedMultOp) (e : GroupElem) :=
   match m with
   | wm_Add n w => 
@@ -119,6 +97,7 @@ Section GeneratorMulWNAF.
   | wm_Double n => Some (groupDouble_n (n * wsize) e)
   end.
 
+  (* Evaluate a double/add program using table lookups of addition operations. *)
   Fixpoint groupMul_signedWindows_precomp (e : GroupElem)(ws : list WindowedMultOp) : option GroupElem :=
     match ws with
     | nil => Some e
@@ -129,6 +108,13 @@ Section GeneratorMulWNAF.
       end
     end.
 
+  (* Convert a simple windowed multiplication by permuting the addition operations and inserting doublings in a specific way. Then 
+  run the double/add program using the semantics that performs all add operations by table lookup. This will only succeed 
+  if doublings were inserted in a way that ensures all the add operations can be performed by table lookups. For example,
+  we can permute the numbers [0, 1, 2, 3, ...] (describing the position of each window) to get [0, 4, 8, ..., 1, 5, 9, ..., 2, 6, 10, ....]
+  and then insert a doubling after each part to decrease the following values by 1. This will result in a list where additions have 
+  exponents that look like [0, 4, 8, ..., 0, 4, 8, ..., 0, 4, 8, ...]. These additions can be calculated using table lookups into a table
+  that only includes multiples of 2^0, 2^4, 2^8, etc. *)
   Definition groupedMul_precomp d ws :=
     match (permuteAndDouble ws d (flatten (groupIndices numWindows numPrecompExponentGroups)) (endIndices (groupIndices numWindows numPrecompExponentGroups))) with
     | None => None
@@ -151,7 +137,6 @@ Section GeneratorMulWNAF.
     inversion H0; clear H0; subst.
     rewrite pExpMultiple_correct.
     eapply groupAdd_proper; eauto.
-    unfold groupMul_doubleAdd_signed.
     match goal with
     | [|- ?f ?a ?c == ?f ?b ?c] => replace a with b
     end.
@@ -320,21 +305,6 @@ Section GeneratorMulWNAF.
     trivial.
     discriminate.
     discriminate.
-  Qed.
-
-  Theorem map_nth_error_Forall : forall l2  (A : Type)(l1 : list A) P,
-    Forall P l1 ->
-    Forall (fun x => match x with | Some y => P y | None => True end) (map (nth_error l1) l2).
-
-    induction l2; intros; simpl in *.
-    econstructor.
-    econstructor; eauto.
-    case_eq (nth_error l1 a); intros.
-    eapply Forall_forall.
-    eauto.
-    eapply nth_error_In; eauto.
-    apply I.
-
   Qed.
 
   Theorem multiSelect_OddWindow : forall l1 l2 l3,
@@ -571,59 +541,7 @@ Section GeneratorMulWNAF.
 
   Qed.
 
-  Definition groupMul := groupMul groupAdd idElem.
-  Definition preCompTable := preCompTable groupAdd idElem groupDouble wsize.  
+End GeneratorMul.
 
-  Hint Resolve groupMul_proper : typeclass_instances.
-
-  Fixpoint basePreCompTable m x n :=
-    match n with
-    | 0%nat => nil
-    | S n' => (preCompTable x) :: (basePreCompTable m (groupDouble_n m x) n')
-    end.
-
-  Theorem basePreCompTable_correct : forall n m x n1 n2,
-    (n1 < n)%nat ->
-    (n2 < Nat.pow 2 (pred wsize))%nat-> 
-    (List.nth n2 (List.nth n1 (basePreCompTable m x n) List.nil) idElem) == (groupMul ((2 * n2 + 1) * (Nat.pow 2 (n1 * m))) x).
-
-    induction n; destruct n1; intros; simpl in *; try lia.
-    unfold preCompTable.
-    erewrite preCompTable_nth; eauto.
-    simpl.
-    repeat rewrite plus_0_r.
-    repeat rewrite Nat.mul_1_r.
-    reflexivity.
-    unfold tableSize.
-    rewrite Nat.shiftl_1_l.
-    rewrite Nat.sub_1_r.
-    trivial.
-
-    erewrite IHn.
-    repeat rewrite plus_0_r.
-    unfold groupMul.
-    rewrite groupMul_assoc; eauto.
-    rewrite groupMul_assoc; eauto.
-    apply groupMul_proper; eauto.
-    unfold groupDouble_n.
-    rewrite groupDouble_n_groupMul_equiv; eauto.
-    rewrite plus_comm.
-    rewrite Nat.pow_add_r.
-    rewrite groupMul_assoc; eauto.
-    reflexivity.
-    lia.
-    trivial.
-
-  Qed.
-
-End GeneratorMulWNAF.
-
-Section ComputeBaseTable.
-
-
-
-
-
-End ComputeBaseTable.
 
 
